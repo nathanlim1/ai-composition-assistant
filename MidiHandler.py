@@ -8,11 +8,27 @@ class MidiHandler:
 
     def load_midi(self):
         # Load the MIDI file and parse it
-        pass
+        print("Loading MIDI file: ", self.midi_file)
+        midi = m21.converter.parse(self.midi_file)
+        self.midi_data = midi
+        print(midi.show('text'))  # Show the text representation of the MIDI data
+        print(midi.show())
 
     def get_notes(self):
         # Extract notes from the MIDI data
-        pass
+        score = []
+        part = self.midi_data[1]
+        for measure in part:
+            notes = []
+            for note in measure.notes:
+                notes.append(note)
+            score.append(notes.copy())
+        return score
+    
+    def get_key(self):
+        # Extract the key signature from the MIDI data
+        key = self.midi_data.analyze('key')
+        return key
 
     def save_midi(self, output_file):
         # Save the modified MIDI data to a new file
