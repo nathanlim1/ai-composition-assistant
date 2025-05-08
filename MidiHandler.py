@@ -30,6 +30,9 @@ class MidiHandler:
         key = self.midi_data.analyze('key')
         return key
 
-    def save_midi(self, output_file):
-        # Save the modified MIDI data to a new file
-        pass
+    def save_midi(self, output_file: str):
+        if self.midi_data is None:
+            raise ValueError("Nothing to save; load or generate MIDI first.")
+        self.midi_data.write("midi", fp=output_file)
+        print(f"Saved MIDI to {output_file}")
+        
