@@ -37,6 +37,16 @@ class KnowledgeBase:
                     "severity": "hard",
                     "suggestion": "Use another scale degree for doubling (often 3 or 5).",
                 },
+                "avoid_unplayable_intervals": {
+                    "desc": "Avoid writing intervals that exceed a 9th in one hand unless arpeggiated.",
+                    "severity": "hard",
+                    "suggestion": "Distribute wide intervals between hands or arpeggiate.",
+                },
+                "no_hand_overlap": {
+                    "desc": "Avoid overlapping left and right hand note ranges unless intentional.",
+                    "severity": "hard",
+                    "suggestion": "Keep hands in separate registers to maintain clarity.",
+                },
             },
             "melodic": {
                 "stay_within_tessitura": {
@@ -49,7 +59,53 @@ class KnowledgeBase:
                     "severity": "soft",
                     "suggestion": "Use chromatic passing tones or re‑voice to form a minor 3rd instead.",
                 },
+                "avoid_extreme_registers": {
+                    "desc": "Avoid writing melodic lines that fall outside the standard piano range (A0–C8).",
+                    "severity": "hard",
+                    "suggestion": "Transpose extreme notes into a playable range.",
+                },
+                "stay_within_piano_range": {
+                    "desc": "All notes must stay within the standard piano range (A0 to C8).",
+                    "severity": "hard",
+                    "suggestion": "Transpose or omit notes that fall outside the playable piano range.",
+                },
             },
+            "rhythmic": {
+                "avoid_constant_note_values": {
+                    "desc": "Using the same note value repeatedly can make the rhythm monotonous.",
+                    "severity": "soft",
+                    "suggestion": "Vary note durations to create more rhythmic interest.",
+                },
+                "syncopation_should_resolve": {
+                    "desc": "Syncopated figures should resolve onto strong beats within the meter.",
+                    "severity": "soft",
+                    "suggestion": "Follow syncopation with a strong downbeat to ground the rhythm.",
+                },
+            },
+            "pianistic": {
+                "balance_between_hands": {
+                    "desc": "Ensure musical material is balanced between hands to avoid awkward textures.",
+                    "severity": "soft",
+                    "suggestion": "Distribute activity more evenly or alternate between hands.",
+                },
+                "use_pedal_clearly": {
+                    "desc": "Avoid overlapping harmonies that cause pedal-induced blurring.",
+                    "severity": "soft",
+                    "suggestion": "Lift pedal between harmonically distant chords.",
+                },
+            },          
+            "performance": {
+                "avoid_excessive_velocity_contrast": {
+                    "desc": "Avoid unnatural contrasts in note velocity that break musical phrasing.",
+                    "severity": "soft",
+                    "suggestion": "Apply dynamic shaping more smoothly across phrases.",
+                },
+                "use_articulation_consistently": {
+                    "desc": "Articulation like staccato or legato should be used consistently within a phrase.",
+                    "severity": "soft",
+                    "suggestion": "Review articulation patterns to ensure clarity and consistency.",
+                },
+            },                                
         }
 
 
