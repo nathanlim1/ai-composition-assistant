@@ -6,6 +6,7 @@ class KnowledgeBase:
     def __init__(self):
         self.rules: Dict[str, Dict[str, Dict[str, str]]] = {}
         self.dynamic_context: dict[str, str] = {}
+        self.generated_rules: Dict[str, Dict[str, Dict[str, str]]] = {}
         self.load_static_rules()
 
     def load_static_rules(self):
