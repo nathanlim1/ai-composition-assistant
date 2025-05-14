@@ -1,6 +1,7 @@
 from typing import List
 
 import music21 as m21
+from pydantic import NoneBytes
 
 class MidiHandler:
     def __init__(self, midi_file):
@@ -13,20 +14,18 @@ class MidiHandler:
         print("Loading MIDI file: ", self.midi_file)
         midi = m21.converter.parse(self.midi_file)
         self.midi_data = midi
-        print(midi.show('text'))  # Show the text representation of the MIDI data
-        # print(midi.show())
+        midi.show('text') # Show the text representation of the MIDI data
+        # midi.show()
 
     def get_notes(self):
-        # Extract notes from the MIDI data
-        score = []
+        # Extract notes from the MIDI data into an array with total file offset + note
+        notes = []
         part = self.midi_data[1]
         for measure in part:
-            notes = []
             for note in measure.notes:
-                notes.append(note)
-            score.append(notes.copy())
-        return score
-
+                notes.append((measure.offset + note.offset, note))
+        return notes
+    
     def add_notes(self, notes: List[tuple[int, float, float]]) -> str:
         """Append notes to the MIDI data."""
         if self.midi_data is None:
@@ -94,8 +93,66 @@ class MidiHandler:
 
         return last['offsetSeconds'] + last['durationSeconds']
 
+    def get_number_of_measures(self):
+        # Get the number of measures in the MIDI file
+        if self.midi_data is None:
+            raise ValueError("MIDI data not loaded.")
+        return len(self.midi_data.parts[0].getElementsByClass(m21.stream.Measure))
+    
+    def get_time_signature(self):
+        # Extract the time signature from the MIDI data
+        if self.midi_data is None:
+            raise ValueError("MIDI data not loaded.")
+        return self.midi_data.parts[0].measures(0,1)[0].timeSignature
+    
+    
+    def get_chord_progression(self, chords):
+        # Get the key of the MIDI file
+        key = self.get_key()
+        roman_numerals = []
+
+        for _, chord in chords:
+            # Convert the chord to a Roman numeral in the given key
+            roman = m21.roman.romanNumeralFromChord(chord, key)
+            roman_numerals.append(roman)
+        return roman_numerals
+    
+    
+    def convert_to_chords(self, window_size = 1):   # window size is in measures
+        notes = self.get_notes()
+        time_signature = self.get_time_signature()
+
+        chords = []
+        
+        for i in range(0, self.get_number_of_measures(), window_size):
+            lower_offset = i * time_signature.numerator
+            upper_offset = lower_offset + (window_size * time_signature.numerator)
+            window = []
+
+            for note in notes:
+                if(lower_offset <= note[0] < upper_offset):
+                    if isinstance(note[1], m21.note.Note):
+                        window.append(note[1])
+                    elif isinstance(note[1], m21.chord.Chord):
+                        chords.append(note)
+
+            if(len(window) != 0):
+                chord = self.get_nearest_chord_by_melody(window)
+                chords.append((lower_offset, chord))
+
+        chords.sort(key=lambda chord: chord[0])  # Sort by offset
+
+        return chords
+
+    # Find the nearest chord to the given note
+    def get_nearest_chord_by_melody(self, notes):
+        pitches = [note.pitch for note in notes]
+        chord = m21.chord.Chord(pitches)
+        return chord
+        
     def get_key(self):
-        # Extract the key signature from the MIDI data
+        # Extract the key signature from the MIDI 
+        # returns a music21 key.Key object
         key = self.midi_data.analyze('key')
         return key
 
