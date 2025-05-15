@@ -1,7 +1,6 @@
 from typing import List
 
 import music21 as m21
-from pydantic import NoneBytes
 
 class MidiHandler:
     def __init__(self, midi_file):
