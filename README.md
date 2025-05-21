@@ -19,6 +19,6 @@ handler_agent      (ReAct + MIDI tools)
    └── else                  →  reviewer_planner
                                    ▼
                                handler_agent  (apply fixes)
-                                   ├── more fixes? → reviewer_planner
+                                   ├── more fixes? → back to planner
                                    └── empty prompt → END
 ```
