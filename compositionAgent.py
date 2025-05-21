@@ -1,60 +1,64 @@
 from __future__ import annotations
-import operator
 import os
+from langgraph.graph.message import add_messages
 from typing import Dict, List
 from typing_extensions import Annotated, TypedDict
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, RemoveMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langchain_core.tools import tool
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import InjectedState, ToolNode
+from langgraph.graph import START, END, StateGraph
+from langgraph.prebuilt import InjectedState, create_react_agent
 from KB import KnowledgeBase
 from MidiHandler import MidiHandler
 
-# load environment variables
 load_dotenv()
 
-
+# NOTE SPECS FOR LLM
 class NoteInput(BaseModel):
-    """Validated representation of a single note to be added to the score."""
+    """Schema for a single music21 note.
 
-    pitch: int = Field(..., ge=0, le=127, description="MIDI pitch number")
-    duration: float = Field(..., gt=0, description="quarterLength duration")
-    offset: float = Field(
-        ..., ge=0, description="Offset (in quarterLength) from end of current score"
-    )
+    • **pitch**   — Integer MIDI note number 0‑127 (Middle C = 60).
+    • **duration**— music21 *quarterLength* (1.0 = quarter, 0.5 = eighth, etc.).
+    • **offset**  — Absolute start time in quarterLength (0.0 = piece start).
+    """
+
+    pitch:    int   = Field(..., ge=0, le=127, description="MIDI pitch 0‑127 (Middle C = 60)")
+    duration: float = Field(..., gt=0,          description="quarterLength (1.0 = quarter)")
+    offset:   float = Field(..., ge=0,          description="absolute start time in quarterLength")
 
 
 class EditSpec(BaseModel):
-    """Mutable attributes for an existing note (by flattened index)."""
+    """Partial update of a single note.
 
-    index: int = Field(..., ge=0, description="Index of note to edit in flattened list")
-    pitch: int | None = Field(None, ge=0, le=127)
-    duration: float | None = Field(None, gt=0)
-    offset: float | None = Field(None, ge=0)
+    Identify the note by its **offset**.  Fields left as *None* stay unchanged.
+    All numeric semantics match those in NoteInput.
+    """
 
-
-class StyleRules(BaseModel):
-    """Structured style rules inferred by the rules‑LLM."""
-
-    chord_progression_rules: Dict[str, Dict[str, str]] | None = Field(
-        None,
-        description="Rules for chord progressions (name → {desc, severity, suggestion})",
-    )
-    melodic_rules: Dict[str, Dict[str, str]] | None = Field(None, description="Rules for melody")
-    harmonic_rules: Dict[str, Dict[str, str]] | None = Field(None, description="Rules for harmony")
+    offset:   float | None = Field(None, ge=0, description="target offset (quarterLength)")
+    pitch:    int   | None = Field(None, ge=0, le=127, description="new MIDI pitch, if changing")
+    duration: float | None = Field(None, gt=0,              description="new quarterLength, if changing")
 
 
-# TOOL definitions for the LLMs to use
+# TOOL DEFINITIONS FOR LLM FUNCTION CALLING
 
 @tool
 def add_notes(
-    notes: List[NoteInput],
+    notes: Annotated[
+        List[NoteInput],
+        Field(
+            description=(
+                "Ordered list of NoteInput objects to append. Each entry fully "
+                "defines one note: **pitch** (0‑127), **duration** (quarterLength), "
+                "and **offset** (absolute start time in quarterLength)."
+            )
+        ),
+    ],
     state: Annotated[Dict[str, object], InjectedState],
 ) -> str:
-    """Append notes to the current MIDI."""
+    """Append one or more notes to the piece."""
 
     state["midi_handler"].add_notes([(n.pitch, n.duration, n.offset) for n in notes])
     return f"Added {len(notes)} notes."
@@ -62,217 +66,240 @@ def add_notes(
 
 @tool
 def remove_notes(
-    indices: List[int],
+    start_offset: Annotated[
+        float,
+        Field(gt=0, description="Inclusive lower bound of deletion window (quarterLength)."),
+    ],
+    end_offset: Annotated[
+        float,
+        Field(gt=0, description="Exclusive upper bound of deletion window (quarterLength)."),
+    ],
     state: Annotated[Dict[str, object], InjectedState],
 ) -> str:
-    """Remove notes by flattened indices (0‑based)."""
+    """Erase every note with **offset** ∈ [start_offset, end_offset)."""
 
-    state["midi_handler"].remove_notes(indices)
-    return f"Removed {len(indices)} notes."
+    return state["midi_handler"].remove_notes(start_offset, end_offset)
 
 
 @tool
 def edit_note(
-    spec: EditSpec,
+    spec: Annotated[
+        EditSpec,
+        Field(description="Identify one note by offset and supply new pitch/duration as needed."),
+    ],
     state: Annotated[Dict[str, object], InjectedState],
 ) -> str:
-    """Edit attributes of a single note."""
+    """Modify an existing note’s pitch and/or duration."""
 
-    state["midi_handler"].edit_note(
-        spec.index, pitch=spec.pitch, duration=spec.duration, offset=spec.offset
-    )
-    return "Note edited."
+    return state["midi_handler"].edit_note(spec.offset, pitch=spec.pitch, ql=spec.duration)
 
 
 @tool
 def replace_passage(
-    start_offset: float,
-    end_offset: float,
-    notes: List[NoteInput],
+    start_offset: Annotated[
+        float,
+        Field(ge=0, description="Start of passage to replace (quarterLength)."),
+    ],
+    end_offset: Annotated[
+        float,
+        Field(gt=0, description="End of passage to replace (quarterLength, exclusive)."),
+    ],
+    notes: Annotated[
+        List[NoteInput],
+        Field(description="New material to insert. Offsets are **relative** to start_offset."),
+    ],
     state: Annotated[Dict[str, object], InjectedState],
 ) -> str:
-    """Replace passage between *start_offset* and *end_offset* with new notes."""
+    """Atomically wipe a region and insert new notes."""
 
-    state["midi_handler"].replace_passage(
-        start_offset, end_offset, [(n.pitch, n.duration, n.offset) for n in notes]
-    )
-    return "Passage replaced."
+    return state["midi_handler"].replace_passage(start_offset, end_offset, [(n.pitch, n.duration) for n in notes])
 
 
-COMPOSER_TOOLS = [add_notes, remove_notes, edit_note]
-REVIEWER_TOOLS = COMPOSER_TOOLS + [replace_passage]
+MIDI_TOOLS = [add_notes, remove_notes, edit_note, replace_passage]
 
-
+# SETUP SHARED STATE SCHEMA
 class GraphState(TypedDict):
-    # Immutable inputs
-    midi_path: str
-    user_prompt: str
+    midi_path:       str
+    user_prompt:     str
     target_duration: float
 
-    # Internal, mutated in‑place
-    kb: KnowledgeBase | None
-    midi_handler: MidiHandler | None
+    kb:           KnowledgeBase | None
+    midi_handler: MidiHandler   | None
 
-    # Agent loop
-    messages: Annotated[list, operator.add]
-    done: bool
+    messages:     Annotated[list, add_messages]
+    output_midi:  str
 
-    # Output artifact
-    output_midi: str
+    remaining_steps: int  # max tool-call hops
 
 
+# SETUP LLM INSTANCES
+_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+composer_llm  = ChatOpenAI(model=_MODEL, temperature=0.7)
+reviewer_llm  = ChatOpenAI(model=_MODEL, temperature=0.0)
+handler_llm   = ChatOpenAI(model=_MODEL, temperature=0.0)
 
-_MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+handler_agent = create_react_agent(model=handler_llm, tools=MIDI_TOOLS, state_schema=GraphState)
 
-rules_llm = ChatOpenAI(model=_MODEL_NAME, temperature=0.0)
-composer_llm = ChatOpenAI(model=_MODEL_NAME, temperature=0.7).bind_tools(COMPOSER_TOOLS)
-reviewer_llm = ChatOpenAI(model=_MODEL_NAME, temperature=0.0).bind_tools(REVIEWER_TOOLS)
-
-rules_parser = rules_llm.with_structured_output(StyleRules)
+# SETUP GRAPH NODES
 
 def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
-    """Analyse MIDI & prompt, infer style rules, and initialise objects."""
+    """Initialise MidiHandler + KB and emit the Handler system prompt."""
 
-    midi_handler = MidiHandler(state["midi_path"])
+    mh = MidiHandler(state["midi_path"])
     kb = KnowledgeBase()
+    kb.build_algorithmic_dynamic(mh)
 
-    # Extract static musical context (key, metre, etc.)
-    kb.build_algorithmic_dynamic(midi_handler)
+    handler_system_msg = SystemMessage(
+        f"""
+        You are the **Handler** agent.
 
-    # Infer additional stylistic rules using the LLM
-    prompt = (
-        "You are a music‑theory assistant. Given the STATIC rules below and "
-        "the user's stylistic prompt, infer additional *stylistic* rules that "
-        "should hold for any continuation of the piece. Return ONLY a JSON "
-        "object that conforms to the provided schema.\n\n"
-        f"STATIC + ALGO RULE SUMMARY:\n{kb.summary_markdown()}\n\n"
-        f"USER STYLISTIC PROMPT:\n{state['user_prompt']}\n\n"
-        f"NOTES:\n{midi_handler.get_notes()}\n\n"
-        "Focus on key, characteristic rhythmic motives, allowable harmonic "
-        "colour, and texture. Do not repeat rules already present."
+        Use the provided tools to carry out exactly the instructions that come
+        from the Composer or Reviewer.
+
+        **Numeric semantics (do not change):**
+        • **offset**   — absolute start time in *quarterLength* (0.0 = piece start).
+        • **pitch**    — MIDI integer 0‑127 (Middle C = 60).
+        • **duration** — *quarterLength* value (1.0 = quarter, 0.25 = sixteenth …).
+
+        After every tool call sequence requested by the message, reply with a
+        short natural‑language confirmation and **no additional tool calls**.
+        """
     )
 
-    style_rules: StyleRules = rules_parser.invoke(prompt)
-    kb.generated_rules = style_rules
-
-    return {
-        "kb": kb,
-        "midi_handler": midi_handler,
-        "messages": [
-            SystemMessage(
-                content=(
-                    "You are an expert MIDI composer. Extend the excerpt from the offset of the last note while "
-                    "respecting ALL KB rules. Use tool calls to manipulate the "
-                    "MIDI; respond with plain text ONLY when the score is complete."
-                )
-            ),
-            HumanMessage(content="Please continue the excerpt."),
-        ],
-    }
+    return {"kb": kb, "midi_handler": mh, "messages": [handler_system_msg]}
 
 
-def composer_agent(state: GraphState) -> Dict[str, object]:
-    """Generate Composer output (plain text or tool calls)."""
+def composer_planner(state: GraphState) -> Dict[str, object]:
+    """Ask the Composer to propose ONE concrete musical edit and
+    wipe message history before handing off to the Handler."""
 
-    response = composer_llm.invoke(state["messages"])
-    return {"messages": [response]}
-
-
-def composer_router(state: GraphState):
-    """Determine the next step in the Composer loop."""
-
-    if state["done"]:
-        return END
-
-    # Hand over to reviewer once we've hit the target duration
-    if state["midi_handler"].get_duration() >= state["target_duration"]:
-        return "reviewer"
-
-    last_msg = state["messages"][-1]
-    if getattr(last_msg, "tool_calls", None):
-        return "composer_tools"
-
-    return "composer_agent"
-
-
-def reviewer(state: GraphState) -> Dict[str, object]:
-    """Validate the completed piece and optionally apply fixes via tools."""
+    mh, kb = state["midi_handler"], state["kb"]
+    # Preserve the Handler system prompt that was inserted in dynamic_rule_builder
+    handler_sys_msg = state["messages"][0] if state["messages"] else None
 
     prompt = (
-        "You are a strict music‑theory reviewer. Analyse the ENTIRE MIDI "
-        "(describe it abstractly) and the KB below. If you find violations or "
-        "inconsistencies, fix them USING TOOL CALLS. If everything is OK, "
-        "respond with NO tool calls.\n\n"
-        f"KNOWLEDGE BASE:\n{state['kb'].summary_markdown()}"
-    )
+        """
+        You are the **Composer** agent.
 
-    result = reviewer_llm.invoke([SystemMessage(content=prompt)])
-    return {"messages": [result]}
+        Propose **ONE** specific addition (e.g. add a chord, series of specific 8th notes, etc.).
+        
+        Be very specific about pitch and duration of the notes.
+
+        **Numeric semantics (fixed):** pitch = MIDI 0-127 (Middle C = 60), duration =
+        quarterLength, offset = absolute quarterLength.  **Do not specify
+        offsets yourself**; the Handler will place the material.
+
+        Keep your instruction ≤ 2 sentences, no tool syntax.
+
+        Your edit will be sent to another AI agent who will use those instructions
+        to add to the MIDI file.
+
+        KNOWLEDGE BASE:
+        {kb}
+        """
+    ).format(kb=kb.summary_markdown())
+
+    suggestion: AIMessage = composer_llm.invoke(prompt)
+
+    last20 = mh.get_notes()[-20:]
+    content = f"LAST_20_NOTES:\n{last20}\n\n{suggestion.content}"
+
+    # 1) wipe everything, 2) re-add system prompt, 3) deliver new instruction
+    new_msgs = [
+        RemoveMessage(id=REMOVE_ALL_MESSAGES),  # ← wipe
+        handler_sys_msg,  # restore system prompt
+        HumanMessage(content=content),  # composer’s fresh instruction
+    ]
+
+    return {"messages": new_msgs}
 
 
-def reviewer_router(state: GraphState):
-    """Decide whether the reviewer needs tool execution or we're finished."""
+def reviewer_planner(state: GraphState) -> Dict[str, object]:
+    """Have the Reviewer check for rule violations and propose one fix, if any."""
 
-    last_msg = state["messages"][-1]
-    if getattr(last_msg, "tool_calls", None):
-        return "reviewer_tools"
-    return END
+    mh, kb = state["midi_handler"], state["kb"]
+
+    prompt = (
+        """
+        You are the **Reviewer** agent.
+
+        Inspect the entire piece against the Knowledge Base.  If you find a
+        violation, describe **ONE** short fix. Otherwise reply with an empty
+        string.
+
+        Numeric semantics are fixed (pitch = MIDI, duration = quarterLength,
+        offset = quarterLength).
+
+        KNOWLEDGE BASE:
+        {kb}
+        """
+    ).format(kb=kb.summary_markdown())
+
+    critique: AIMessage = reviewer_llm.invoke(prompt)
+
+    last20 = mh.get_notes()[-20:]
+    content = f"LAST_20_NOTES:\n{last20}\n\n{critique.content}"
+
+    return {"messages": [HumanMessage(content=content)]}
+
+
+# ROUTING FUNCTIONS
+
+def after_handler(state: GraphState) -> str:
+    if state["midi_handler"].get_duration() < state["target_duration"]:
+        return "composer_planner"
+    return "reviewer_planner"
+
+
+def after_reviewer(state: GraphState) -> str:
+    return END  # TODO: switch back to reviewer to loop against KB
+
+
+
+# BUILD THE GRAPH
 
 graph = StateGraph(GraphState)
 
-# Nodes
 graph.add_node("dynamic_rule_builder", dynamic_rule_builder)
-graph.add_node("composer_agent", composer_agent)
-graph.add_node("composer_tools", ToolNode(COMPOSER_TOOLS))
-graph.add_node("reviewer", reviewer)
-graph.add_node("reviewer_tools", ToolNode(REVIEWER_TOOLS))
+graph.add_node("composer_planner",     composer_planner)
+graph.add_node("handler_agent",        handler_agent)
+graph.add_node("reviewer_planner",     reviewer_planner)
 
-# Edges
-graph.add_edge(START, "dynamic_rule_builder")
-graph.add_edge("dynamic_rule_builder", "composer_agent")
-
-graph.add_conditional_edges(
-    "composer_agent",
-    composer_router,
-    {
-        "composer_tools": "composer_tools",
-        "composer_agent": "composer_agent",
-        "reviewer": "reviewer",
-        END: END,
-    },
-)
-
-graph.add_edge("composer_tools", "composer_agent")
+graph.add_edge(START,                   "dynamic_rule_builder")
+graph.add_edge("dynamic_rule_builder",  "composer_planner")
+graph.add_edge("composer_planner",      "handler_agent")
 
 graph.add_conditional_edges(
-    "reviewer",
-    reviewer_router,
-    {
-        "reviewer_tools": "reviewer_tools",
-        END: END,
-    },
+    "handler_agent",
+    after_handler,
+    {"composer_planner": "composer_planner", "reviewer_planner": "reviewer_planner"},
 )
 
-graph.add_edge("reviewer_tools", "reviewer")
+graph.add_conditional_edges(
+    "reviewer_planner",
+    after_reviewer,
+    {"handler_agent": "handler_agent", END: END},
+)
 
 compiled_graph = graph.compile()
 
-
+# SAMPLE RUN
 if __name__ == "__main__":
-    initial_state: GraphState = {
-        "midi_path": "test_input/simple1channel.mid",
-        "user_prompt": (
-            "Extend the excerpt in a similar style."
-        ),
-        "target_duration": 30.0,
+    MIDI_IN         = "test_input/simple1channel.mid"
+    TARGET_SECONDS  = 24.0
+    MIDI_OUT        = "extended_output.mid"
+
+    init_state: GraphState = {
+        "midi_path": MIDI_IN,
+        "user_prompt": "Extend the excerpt in a similar style.",
+        "target_duration": TARGET_SECONDS,
         "kb": None,
         "midi_handler": None,
         "messages": [],
-        "done": False,
-        "output_midi": "extended_output.mid",
+        "output_midi": MIDI_OUT,
+        "remaining_steps": 30,
     }
 
-    final_state = compiled_graph.invoke(initial_state)
-
-    final_state["midi_handler"].save_midi(final_state["output_midi"])
-    print(f"[FINAL] Saved composed MIDI → {final_state['output_midi']}")
+    final = compiled_graph.invoke(init_state)
+    final["midi_handler"].save_midi(final["output_midi"])
+    print(f"Saved composed MIDI → {final['output_midi']}")

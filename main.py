@@ -6,6 +6,8 @@ def main():
     print()
     print("Length in Measures: ", midi_handler.get_number_of_measures())
     print()
+    print("Length in seconds: ", midi_handler.get_duration())
+    print()
     print("Time Signature: ", midi_handler.get_time_signature())
     print()
     print("Notes: ", midi_handler.get_notes())

@@ -18,13 +18,15 @@ class MidiHandler:
 
     def get_notes(self):
         # Extract notes from the MIDI data into an array with total file offset + note
-        notes = []
-        part = self.midi_data[1]
-        for measure in part:
-            for note in measure.notes:
-                notes.append((measure.offset + note.offset, note))
+        if self.midi_data is None:
+            raise ValueError("MIDI data not loaded.")
+
+        part = self.midi_data.parts[0]
+        notes = [(n.getOffsetInHierarchy(part), n)
+                 for n in part.recurse().notes]
+        notes.sort(key=lambda t: t[0])
         return notes
-    
+
     def add_notes(self, notes: List[tuple[int, float, float]]) -> str:
         """Append notes to the MIDI data."""
         if self.midi_data is None:
@@ -97,14 +99,14 @@ class MidiHandler:
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
         return len(self.midi_data.parts[0].getElementsByClass(m21.stream.Measure))
-    
+
     def get_time_signature(self):
         # Extract the time signature from the MIDI data
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
         return self.midi_data.parts[0].measures(0,1)[0].timeSignature
-    
-    
+
+
     def get_chord_progression(self, chords):
         # Get the key of the MIDI file
         key = self.get_key()
@@ -115,14 +117,14 @@ class MidiHandler:
             roman = m21.roman.romanNumeralFromChord(chord, key)
             roman_numerals.append(roman)
         return roman_numerals
-    
-    
+
+
     def convert_to_chords(self, window_size = 1):   # window size is in measures
         notes = self.get_notes()
         time_signature = self.get_time_signature()
 
         chords = []
-        
+
         for i in range(0, self.get_number_of_measures(), window_size):
             lower_offset = i * time_signature.numerator
             upper_offset = lower_offset + (window_size * time_signature.numerator)
@@ -148,11 +150,11 @@ class MidiHandler:
         pitches = [note.pitch for note in notes]
         chord = m21.chord.Chord(pitches)
         return chord
-        
+
     def get_key(self):
-        # Extract the key signature from the MIDI 
+        # Extract the key signature from the MIDI
         # returns a music21 key.Key object
-        key = self.midi_data.analyze('key')
+        key = (self.midi_data.flatten().keySignature).asKey()
         return key
 
     def save_midi(self, output_file: str):
@@ -160,4 +162,3 @@ class MidiHandler:
             raise ValueError("Nothing to save; load or generate MIDI first.")
         self.midi_data.write("midi", fp=output_file)
         print(f"Saved MIDI to {output_file}")
-        
