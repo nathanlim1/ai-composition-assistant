@@ -7,7 +7,7 @@ To use the project, make sure you create a `.env` file in the main directory wit
 ---
 
 ### Newest Agent Approach:
-
+```
 input
 ▼
 dynamic_rule_builder
@@ -21,3 +21,4 @@ handler_agent (ReAct + MIDI tools)
 handler_agent (apply fixes)
 ├── more fixes? → reviewer_planner
 └── empty prompt → END
+```
