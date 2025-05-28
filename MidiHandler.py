@@ -61,15 +61,15 @@ class MidiHandler:
         # Get the time signature to calculate measures
         time_sig = self.midi_data.getTimeSignatures()[0]
         beats_per_measure = time_sig.numerator / time_sig.denominator * 4  # Convert to quarter notes
-        total_measures = int(self.get_duration() / beats_per_measure)
+        total_measures = self.get_number_of_measures()
 
         for offset, note in notes:
             measure_num = int(offset / beats_per_measure)
 
             # Skip if we're only looking for specific measures
-            if measure_nums > 0 and measure_num >= measure_nums:
+            if measure_nums > 0 and measure_num > measure_nums:
                 continue
-            if measure_nums < 0 and measure_num < total_measures + measure_nums:
+            if measure_nums < 0 and measure_num < (total_measures + measure_nums):
                 continue
 
             event = {

@@ -19,7 +19,6 @@ load_dotenv()
 # NOTE SPECS FOR LLM
 class NoteInput(BaseModel):
     """Schema for a single music21 note."""
-
     pitch:    int   = Field(..., ge=0, le=127, description="MIDI pitch 0‑127 (Middle C = 60)")
     duration: float = Field(..., gt=0,          description="Note length in quarterLength (1.0 = quarter)")
     offset:   float = Field(..., ge=0,          description="absolute note start time in quarterLength (0.0 = piece start).")
@@ -153,36 +152,37 @@ def composer_planner(state: GraphState) -> Dict[str, object]:
         """
         You are the **Composer** agent. Your goal is to continue composing a piece.
 
-        Unless otherwise required, your additions should be measure by measure.
+        Unless otherwise required, your additions should be 1 measure at a time. You do not need to specify the offset of 
+        measures or notes. Simply explain what you want to add in the next measure.
         
-        For each measure, you u
+        You should build off the existing piece in the continued style as the previous measures, continuing with similar
+        key, rhythm, and harmonic progression.
         
-        Be very specific about pitch and duration of the notes.
+        Be very specific about pitch (class and octave), placement, and duration of all the notes you want to be added.
+        
+        You do not need to specify anything about dynamics, articulations, or other performance details.
 
-        **Numeric semantics (fixed):** pitch = MIDI 0-127 (Middle C = 60), duration =
-        quarterLength, offset = absolute quarterLength.  **Do not specify
-        offsets yourself**; the Handler will place the material.
+        Keep your instruction specific, but concise.
 
-        Keep your instruction ≤ 2 sentences, no tool syntax.
-
-        Your edit will be sent to another AI agent who will use those instructions
+        Your instructions will be sent to another AI agent who will use those instructions
         to add to the MIDI file.
 
         KNOWLEDGE BASE:
         {kb}
         """
-    ).format(kb=kb.summary_markdown())
+    ).format(kb=kb.dynamic_context.get('key', 'Unknown'))  # TODO: change back to full KB
 
     suggestion: AIMessage = composer_llm.invoke(prompt)
 
-    last20 = mh.get_notes()[-20:]
-    content = f"LAST_20_NOTES:\n{last20}\n\n{suggestion.content}"
+    # Get the last 8 measures as JSON
+    last_measures_json = mh.get_notes_json(measure_nums=-12)
+    content = f"CONTEXT_NOTES_JSON:\n{last_measures_json}\n\n{suggestion.content}"
 
     # 1) wipe everything, 2) re-add system prompt, 3) deliver new instruction
     new_msgs = [
         RemoveMessage(id=REMOVE_ALL_MESSAGES),  # ← wipe
         handler_sys_msg,  # restore system prompt
-        HumanMessage(content=content),  # composer’s fresh instruction
+        HumanMessage(content=content),  # composer's fresh instruction
     ]
 
     return {"messages": new_msgs}
@@ -211,8 +211,9 @@ def reviewer_planner(state: GraphState) -> Dict[str, object]:
 
     critique: AIMessage = reviewer_llm.invoke(prompt)
 
-    last20 = mh.get_notes()[-20:]
-    content = f"LAST_20_NOTES:\n{last20}\n\n{critique.content}"
+    # Get the entire piece as JSON
+    all_notes_json = mh.get_notes_json()
+    content = f"CONTEXT_NOTES_JSON:\n{all_notes_json}\n\n{critique.content}"
 
     return {"messages": [HumanMessage(content=content)]}
 
@@ -260,8 +261,8 @@ compiled_graph = graph.compile()
 # SAMPLE RUN
 if __name__ == "__main__":
     MIDI_IN         = "test_input/simple1channel.mid"
-    TARGET_SECONDS  = 25.0
-    MIDI_OUT        = "extended_output4.mid"
+    TARGET_SECONDS  = 30.0
+    MIDI_OUT        = "extended_output5.mid"
 
     init_state: GraphState = {
         "midi_path": MIDI_IN,
