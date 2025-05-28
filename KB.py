@@ -6,7 +6,7 @@ class KnowledgeBase:
     def __init__(self):
         self.rules: Dict[str, Dict[str, Dict[str, str]]] = {}
         self.dynamic_context: dict[str, str] = {}
-        self.generated_rules: Dict[str, Dict[str, Dict[str, str]]] = {}
+        self.generated_rules: str = ""
         self.load_static_rules()
 
     def load_static_rules(self):
@@ -14,99 +14,106 @@ class KnowledgeBase:
         Load static theory and compositional rules into the knowledge base.
         """
         self.rules = {
-            "chord_progression": {
-                "resolve_dominant_to_tonic": {
-                    "desc": "A V (dominant) chord should normally resolve to I (tonic) or vi in deceptive cadence.",
+            "continuity": {
+                "honor_established_key": {
+                    "desc": (
+                        "Remain in the current key for at least four full measures "
+                        "after it is stated, unless a prepared modulation or tonicization "
+                        "has been foreshadowed."
+                    ),
                     "severity": "hard",
-                    "suggestion": "Try following a V chord with I (or vi for a deceptive resolution).",
+                    "suggestion": "If modulation is desired, insert a secondary-dominant or pivot-chord first.",
                 },
-                "avoid_parallel_fifths_root_movement": {
-                    "desc": "Avoid root progressions by parallel perfect fifths across consecutive chords.",
+                "follow_active_progression": {
+                    "desc": (
+                        "The next harmony should fit the functional trajectory implied by the "
+                        "preceding 2-4 chords (e.g., ii–V wants I or vi; V/V wants V)."
+                    ),
+                    "severity": "hard",
+                    "suggestion": "Use circle-of-fifths or deceptive options that listeners expect.",
+                },
+                "reuse_recent_rhythmic_cell": {
+                    "desc": "At least one rhythmic figure from the previous 2 bars should return or vary.",
                     "severity": "soft",
-                    "suggestion": "Insert passing or neighbor chords to break the fifths, or use inversion.",
+                    "suggestion": "Alter only the final note value or apply syncopation to keep it fresh.",
                 },
             },
-            "harmonic": {
-                "no_parallel_fifths": {
-                    "desc": "No parallel perfect fifths between any pair of voices.",
+
+            "chord_progression": {
+                "respect_phrase_cadence_points": {
+                    "desc": (
+                        "End of a 4- or 8-bar phrase must cadence (PAC, IAC, HC, or DC) "
+                        "consistent with established style."
+                    ),
                     "severity": "hard",
-                    "suggestion": "Alter one voice by step to create contrary or oblique motion.",
+                    "suggestion": "Plan harmonic rhythm so the cadence chord lands on a strong beat.",
+                },
+            },
+
+            "voice_leading": {
+                "resolve_sevenths_and_leading_tones": {
+                    "desc": "Chordal sevenths resolve down; leading tones resolve up (or down in inner voices).",
+                    "severity": "hard",
+                    "suggestion": "Check every V⁷→I, ii⁷→V, etc., for proper resolution.",
+                },
+                "retain_common_tones": {
+                    "desc": "Whenever possible, keep common tones between successive chords in the same voice.",
+                    "severity": "soft",
+                    "suggestion": "Write one voice stationary and move the others.",
                 },
                 "no_doubled_leading_tone": {
-                    "desc": "Do not double the leading tone in minor keys.",
+                    "desc": "Never double the leading tone in minor or major keys.",
                     "severity": "hard",
-                    "suggestion": "Use another scale degree for doubling (often 3 or 5).",
-                },
-                "avoid_unplayable_intervals": {
-                    "desc": "Avoid writing intervals that exceed a 9th in one hand unless arpeggiated.",
-                    "severity": "hard",
-                    "suggestion": "Distribute wide intervals between hands or arpeggiate.",
-                },
-                "no_hand_overlap": {
-                    "desc": "Avoid overlapping left and right hand note ranges unless intentional.",
-                    "severity": "hard",
-                    "suggestion": "Keep hands in separate registers to maintain clarity.",
+                    "suggestion": "Double scale degrees 3 or 5 instead.",
                 },
             },
+
+            "phrase_structure": {
+                "consistent_phrase_length": {
+                    "desc": "Maintain the established phrase length (usually 4 or 8 measures) unless intentionally varied.",
+                    "severity": "soft",
+                    "suggestion": "If you extend or truncate a phrase, balance it in the next phrase (period construction).",
+                },
+                "cadence_alignment": {
+                    "desc": "Cadences should coincide with strong metric accents (typically beat 1).",
+                    "severity": "hard",
+                    "suggestion": "Shift preceding material earlier or later to land the cadence correctly.",
+                },
+            },
+
+            "motivic": {
+                "develop_primary_motif": {
+                    "desc": (
+                        "Every 2–4 measures, reference or vary the primary melodic/rhythmic motif "
+                        "introduced earlier (inversion, retrograde, augmentation, diminution, etc.)."
+                    ),
+                    "severity": "soft",
+                    "suggestion": "Transform interval shapes or durations but keep the contour recognizable.",
+                },
+                "avoid_unrelated_material": {
+                    "desc": "Do not introduce wholly new motives unless beginning a clearly defined new section.",
+                    "severity": "soft",
+                    "suggestion": "If new material is needed, derive it from fragments of existing motives.",
+                },
+            },
+
             "melodic": {
-                "stay_within_tessitura": {
-                    "desc": "Melody should generally stay within a reasonable tessitura (< an 11th).",
-                    "severity": "soft",
-                    "suggestion": "Bring extreme leaps back toward the center with stepwise motion.",
-                },
-                "no_augmented_seconds": {
-                    "desc": "Avoid augmented 2nds in common‑practice melody unless stylistically justified.",
-                    "severity": "soft",
-                    "suggestion": "Use chromatic passing tones or re‑voice to form a minor 3rd instead.",
-                },
                 "avoid_extreme_registers": {
-                    "desc": "Avoid writing melodic lines that fall outside the standard piano range (A0–C8).",
+                    "desc": "Keep melodic lines inside the piano’s playable range (A0–C8).",
                     "severity": "hard",
-                    "suggestion": "Transpose extreme notes into a playable range.",
-                },
-                "stay_within_piano_range": {
-                    "desc": "All notes must stay within the standard piano range (A0 to C8).",
-                    "severity": "hard",
-                    "suggestion": "Transpose or omit notes that fall outside the playable piano range.",
+                    "suggestion": "Transpose extreme notes or rethink voicing.",
                 },
             },
+
             "rhythmic": {
                 "avoid_constant_note_values": {
-                    "desc": "Using the same note value repeatedly can make the rhythm monotonous.",
+                    "desc": "Monotonous repeated note values flatten interest.",
                     "severity": "soft",
-                    "suggestion": "Vary note durations to create more rhythmic interest.",
-                },
-                "syncopation_should_resolve": {
-                    "desc": "Syncopated figures should resolve onto strong beats within the meter.",
-                    "severity": "soft",
-                    "suggestion": "Follow syncopation with a strong downbeat to ground the rhythm.",
+                    "suggestion": "Mix longer and shorter durations or introduce syncopation.",
                 },
             },
-            "pianistic": {
-                "balance_between_hands": {
-                    "desc": "Ensure musical material is balanced between hands to avoid awkward textures.",
-                    "severity": "soft",
-                    "suggestion": "Distribute activity more evenly or alternate between hands.",
-                },
-                "use_pedal_clearly": {
-                    "desc": "Avoid overlapping harmonies that cause pedal-induced blurring.",
-                    "severity": "soft",
-                    "suggestion": "Lift pedal between harmonically distant chords.",
-                },
-            },          
-            "performance": {
-                "avoid_excessive_velocity_contrast": {
-                    "desc": "Avoid unnatural contrasts in note velocity that break musical phrasing.",
-                    "severity": "soft",
-                    "suggestion": "Apply dynamic shaping more smoothly across phrases.",
-                },
-                "use_articulation_consistently": {
-                    "desc": "Articulation like staccato or legato should be used consistently within a phrase.",
-                    "severity": "soft",
-                    "suggestion": "Review articulation patterns to ensure clarity and consistency.",
-                },
-            },                                
         }
+
 
 
     def build_algorithmic_dynamic(self, midi_handler: MidiHandler):
@@ -115,24 +122,38 @@ class KnowledgeBase:
         """
         key = midi_handler.get_readable_key()
         self.dynamic_context["key"] = str(key)
-        # TODO: motifs, time signature, etc, then LLM analysis
+
         time_signature = midi_handler.get_human_readable_time_signature()
         self.dynamic_context["time_signature"] = time_signature
 
         chord_progression = midi_handler.get_human_readable_chord_progression()
         self.dynamic_context["chord_progression"] = chord_progression
 
-    def summary_markdown(self) -> str:
+    def summary_llm_friendly(self) -> str:
         """
-        Returns a summary of the rules in Markdown format for ease of use by an LLM.
+        Returns all rules in a format that is most LLM-friendly: clear, concise, grouped by category, with each rule as a short, direct statement. Ignores severity and suggestion fields. Includes generated rules as a separate section if present.
         """
-        lines: List[str] = [f"**Key:** {self.dynamic_context.get('key', 'Unknown')}"]
+        lines: list[str] = [
+            f"**Key:** {self.dynamic_context.get('key', 'Unknown')}\n"
+            f"**Time Signature:** {self.dynamic_context.get('time_signature', 'Unknown')}\n"
+            f"**Chord Progression:** {self.dynamic_context.get('chord_progression', 'Unknown')}\n"
+            f"**Generated Rules:** {self.generated_rules}\n"
+            ]
+        # Static rules
         for cat, rules in self.rules.items():
             lines.append(f"### {cat.replace('_', ' ').title()} Rules")
             for rid, meta in rules.items():
-                lines.append(f"- **{rid.replace('_',' ')}** ({meta['severity']}): {meta['desc']}")
+                lines.append(f"- {meta['desc']}")
+        # Generated rules (from LLM analysis)
+        if hasattr(self, 'generated_rules') and self.generated_rules:
+            lines.append("\n### Style Analysis (LLM-generated)")
+            if isinstance(self.generated_rules, str):
+                lines.append(self.generated_rules.strip())
+            elif isinstance(self.generated_rules, list):
+                for rule in self.generated_rules:
+                    lines.append(f"- {rule}")
         return "\n".join(lines)
 
 kb = KnowledgeBase()
-print(kb.summary_markdown())
+print(kb.summary_llm_friendly())
 

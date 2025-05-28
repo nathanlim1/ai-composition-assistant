@@ -102,10 +102,13 @@ class GraphState(TypedDict):
 
 
 # SETUP LLM INSTANCES
-_MODEL = os.getenv("OPENAI_MODEL", "o4-mini")
-composer_llm  = ChatOpenAI(model=_MODEL, temperature=1)
-reviewer_llm  = ChatOpenAI(model=_MODEL, temperature=1)
-handler_llm   = ChatOpenAI(model=_MODEL, temperature=1)
+_ADV_MODEL = os.getenv("OPENAI_MODEL", "o4-mini")
+_BASIC_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+dynamic_rule_builder_llm = ChatOpenAI(model=_ADV_MODEL, temperature=1)
+composer_llm  = ChatOpenAI(model=_BASIC_MODEL, temperature=0.3)
+reviewer_llm  = ChatOpenAI(model=_BASIC_MODEL, temperature=1)
+handler_llm   = ChatOpenAI(model=_BASIC_MODEL, temperature=1)
 
 handler_agent = create_react_agent(model=handler_llm, tools=MIDI_TOOLS, state_schema=GraphState)
 
@@ -117,6 +120,28 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     mh = MidiHandler(state["midi_path"])
     kb = KnowledgeBase()
     kb.build_algorithmic_dynamic(mh)
+
+    # Get stylistic analysis from LLM
+    analysis_prompt = f"""
+    Analyze the following MIDI file and provide a list of stylistic rules and patterns:
+    - Key: {mh.get_readable_key()}
+    - Time Signature: {mh.get_time_signature()}
+    - Number of Measures: {mh.get_number_of_measures()}
+    - Notes: {mh.get_notes_json()}
+    
+    Return a list of specific rules about:
+    1. Chord progression patterns
+    2. Note density and spacing
+    3. Melodic patterns and intervals
+    4. Rhythmic patterns
+    5. Any other notable stylistic elements
+
+    Be clear enough that a composer could follow the rules to continue the piece in the same style.
+    """
+
+    analysis_response = dynamic_rule_builder_llm.invoke(analysis_prompt)
+    
+    kb.generated_rules = analysis_response.content
 
     handler_system_msg = SystemMessage(
         f"""
@@ -170,7 +195,7 @@ def composer_planner(state: GraphState) -> Dict[str, object]:
         KNOWLEDGE BASE:
         {kb}
         """
-    ).format(kb=kb.dynamic_context.get('key', 'Unknown'))  # TODO: change back to full KB
+    ).format(kb=kb.summary_llm_friendly())
 
     suggestion: AIMessage = composer_llm.invoke(prompt)
 
@@ -180,7 +205,7 @@ def composer_planner(state: GraphState) -> Dict[str, object]:
 
     # 1) wipe everything, 2) re-add system prompt, 3) deliver new instruction
     new_msgs = [
-        RemoveMessage(id=REMOVE_ALL_MESSAGES),  # ← wipe
+        RemoveMessage(id=REMOVE_ALL_MESSAGES),  # wipe
         handler_sys_msg,  # restore system prompt
         HumanMessage(content=content),  # composer's fresh instruction
     ]
@@ -207,7 +232,7 @@ def reviewer_planner(state: GraphState) -> Dict[str, object]:
         KNOWLEDGE BASE:
         {kb}
         """
-    ).format(kb=kb.summary_markdown())
+    ).format(kb=kb.summary_llm_friendly())
 
     critique: AIMessage = reviewer_llm.invoke(prompt)
 
@@ -260,9 +285,9 @@ compiled_graph = graph.compile()
 
 # SAMPLE RUN
 if __name__ == "__main__":
-    MIDI_IN         = "test_input/ttls1channel.mid"
-    TARGET_SECONDS  = 30.0
-    MIDI_OUT        = "extended_output5.mid"
+    MIDI_IN         = "test_input/verysimple1channel.mid"
+    TARGET_SECONDS  = 20.0
+    MIDI_OUT        = "extended_output6.mid"
 
     init_state: GraphState = {
         "midi_path": MIDI_IN,
@@ -277,4 +302,4 @@ if __name__ == "__main__":
 
     final = compiled_graph.invoke(init_state)
     final["midi_handler"].save_midi(final["output_midi"])
-    print(f"Saved composed MIDI → {final['output_midi']}")
+    print(f"Saved composed MIDI -> {final['output_midi']}")
