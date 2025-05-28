@@ -7,6 +7,7 @@ class MidiHandler:
         self.midi_file = midi_file
         self.midi_data = None
         self.load_midi()
+        self.normalize_pitches_to_key()  # Normalize the pitches to the key signature
 
     def load_midi(self):
         # Load the MIDI file and parse it
@@ -236,3 +237,40 @@ class MidiHandler:
         """Format the pitch to a human-readable string.
         Replaces default music21 representation of flats ('-') with 'b'."""
         return pitch.nameWithOctave.replace("-", "b")
+
+    def normalize_pitches_to_key(self):
+        """Iterate through all notes and chords in midi_data and, for each pitch, if it is enharmonically equivalent
+        to a pitch in the key signature, convert it to that enharmonic spelling (as used in the key signature)."""
+        key = self.get_key()
+
+        # Get set of pitches of the key signature
+        key_pitches = set(p.name for p in key.pitches)
+
+        part = self.midi_data.parts[0]
+        for n in part.recurse().notes:
+            if isinstance(n, m21.note.Note):
+                if n.name not in key_pitches:
+                    for kp in key.pitches:
+                        # Compare pitch class for enharmonic equivalence
+                        if n.pitch.pitchClass == kp.pitchClass:
+                            # Create a new pitch object with the correct class and height
+                            new_pitch = m21.pitch.Pitch(kp.name)
+                            new_pitch.octave = n.pitch.octave
+                            n.pitch = new_pitch
+                            break
+            elif isinstance(n, m21.chord.Chord):
+                # For chords, we need to create new pitch objects for each pitch in the chord
+                new_pitches = []
+                for p in n.pitches:
+                    if p.name not in key_pitches:
+                        for kp in key.pitches:
+                            if p.pitchClass == kp.pitchClass:
+                                new_pitch = m21.pitch.Pitch(kp.name)
+                                new_pitch.octave = p.octave
+                                new_pitches.append(new_pitch)
+                                break
+                        else:
+                            new_pitches.append(p)
+                    else:
+                        new_pitches.append(p)
+                n.pitches = new_pitches
