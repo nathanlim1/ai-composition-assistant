@@ -167,7 +167,21 @@ class MidiHandler:
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
         return self.midi_data.parts[0].measures(0,1)[0].timeSignature
+    
+    def get_human_readable_time_signature(self):
+        """Get a human-readable string representation of the time signature."""
+        time_sig = self.get_time_signature()
+        if time_sig is None:
+            return "No time signature found"
+        return f"{time_sig.numerator}/{time_sig.denominator}" if time_sig.numerator and time_sig.denominator else "Unknown time signature"
 
+    def get_human_readable_chord_progression(self):
+        chord_progression = self.get_chord_progression(self.convert_to_chords())
+        progression_string = []
+        for chord in chord_progression:
+            if isinstance(chord, m21.roman.RomanNumeral):
+                progression_string.append(f"{chord.figure}")
+        return str(progression_string)
 
     def get_chord_progression(self, chords):
         # Get the key of the MIDI file

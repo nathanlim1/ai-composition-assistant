@@ -116,6 +116,11 @@ class KnowledgeBase:
         key = midi_handler.get_readable_key()
         self.dynamic_context["key"] = str(key)
         # TODO: motifs, time signature, etc, then LLM analysis
+        time_signature = midi_handler.get_human_readable_time_signature()
+        self.dynamic_context["time_signature"] = time_signature
+
+        chord_progression = midi_handler.get_human_readable_chord_progression()
+        self.dynamic_context["chord_progression"] = chord_progression
 
     def summary_markdown(self) -> str:
         """

@@ -260,7 +260,7 @@ compiled_graph = graph.compile()
 
 # SAMPLE RUN
 if __name__ == "__main__":
-    MIDI_IN         = "test_input/simple1channel.mid"
+    MIDI_IN         = "test_input/ttls1channel.mid"
     TARGET_SECONDS  = 30.0
     MIDI_OUT        = "extended_output5.mid"
 

@@ -1,7 +1,7 @@
 from MidiHandler import MidiHandler
 
 def main():
-    midi_handler = MidiHandler('test_input/simple1channel.mid')
+    midi_handler = MidiHandler('test_input/ttls1channel.mid')
     print("Key: ", midi_handler.get_readable_key())
     print()
     print("Length in Measures: ", midi_handler.get_number_of_measures())
@@ -9,6 +9,8 @@ def main():
     print("Length in seconds: ", midi_handler.get_duration())
     print()
     print("Time Signature: ", midi_handler.get_time_signature())
+    print()
+    print("Human-readable Time Signature: ", midi_handler.get_human_readable_time_signature())
     print()
     print("Notes: ", midi_handler.get_notes())
     print()
@@ -21,6 +23,10 @@ def main():
 
     progression = midi_handler.get_chord_progression(chords)
     print("Chord Progression: ", progression)
+    print()
+
+    hr_progression = midi_handler.get_human_readable_chord_progression()
+    print("Human-readable Chord Progression: ", hr_progression)
     print()
 
 
