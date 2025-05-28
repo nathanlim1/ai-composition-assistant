@@ -89,8 +89,8 @@ class MidiHandler:
             events.append(event)
         return {"notes": events}
 
-    def add_notes(self, notes: List[tuple[int, float, float]]) -> str:
-        """Append notes to the MIDI data."""
+    def add_notes(self, notes: List[tuple[str, float, float]]) -> str:
+        """Append notes to the MIDI data. Pitch must be a string (e.g., 'Bb4')."""
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
 
@@ -127,8 +127,8 @@ class MidiHandler:
                 return f"Edited note at {offset}: now pitch={n.pitch.midi}, ql={n.quarterLength}"
         return "No note found to edit."
 
-    def replace_passage(self, start: float, end: float, notes: List[tuple[int, float]]) -> str:
-        """High-level helper that wipes out a passage between [start,end] and inserts notes sequentially."""
+    def replace_passage(self, start: float, end: float, notes: List[tuple[str, float]]) -> str:
+        """High-level helper that wipes out a passage between [start,end] and inserts notes sequentially. Pitch must be a string (e.g., 'Bb4')."""
         self.remove_notes(start, end)
         cur = start
         for pitch, ql in notes:

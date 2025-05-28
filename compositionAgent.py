@@ -19,9 +19,9 @@ load_dotenv()
 # NOTE SPECS FOR LLM
 class NoteInput(BaseModel):
     """Schema for a single music21 note."""
-    pitch:    int   = Field(..., ge=0, le=127, description="MIDI pitch 0‑127 (Middle C = 60)")
-    duration: float = Field(..., gt=0,          description="Note length in quarterLength (1.0 = quarter)")
-    offset:   float = Field(..., ge=0,          description="absolute note start time in quarterLength (0.0 = piece start).")
+    pitch: str = Field(..., description="Pitch as string (e.g., 'Bb4', 'C#5')")
+    duration: float = Field(..., gt=0, description="Note length in quarterLength (1.0 = quarter)")
+    offset: float = Field(..., ge=0, description="absolute note start time in quarterLength (0.0 = piece start).")
 
 
 # TOOL DEFINITIONS FOR LLM FUNCTION CALLING
@@ -33,7 +33,7 @@ def add_notes(
         Field(
             description=(
                 "Ordered list of NoteInput objects to append. Each entry fully "
-                "defines one note: **pitch** (0‑127), **duration** (quarterLength), "
+                "defines one note: **pitch** (as string, e.g., 'Bb4'), **duration** (quarterLength), "
                 "and **offset** (absolute start time in quarterLength)."
             )
         ),
