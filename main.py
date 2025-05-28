@@ -2,7 +2,7 @@ from MidiHandler import MidiHandler
 
 def main():
     midi_handler = MidiHandler('test_input/simple1channel.mid')
-    print("Key: ", midi_handler.get_key())
+    print("Key: ", midi_handler.get_readable_key())
     print()
     print("Length in Measures: ", midi_handler.get_number_of_measures())
     print()
@@ -11,6 +11,8 @@ def main():
     print("Time Signature: ", midi_handler.get_time_signature())
     print()
     print("Notes: ", midi_handler.get_notes())
+    print()
+    print("Notes JSON: ", midi_handler.get_notes_json())
     print()
 
     chords = midi_handler.convert_to_chords()

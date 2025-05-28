@@ -113,7 +113,7 @@ class KnowledgeBase:
         """
         Algorithmically builds dynamic rules for the KB based on the MIDI file.
         """
-        key = midi_handler.get_key()
+        key = midi_handler.get_readable_key()
         self.dynamic_context["key"] = str(key)
         # TODO: motifs, time signature, etc, then LLM analysis
 

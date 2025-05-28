@@ -16,8 +16,10 @@ class MidiHandler:
         midi.show('text') # Show the text representation of the MIDI data
         # midi.show()
 
-    def get_notes(self):
-        # Extract notes from the MIDI data into an array with total file offset + note
+    def get_notes(self, offset: float = 0.0):
+        """Extract an array of music21 notes from the MIDI data. If an offset is provided, it will only
+        return notes starting from that offset. A negative offset will return notes staring from
+        (end of piece + offset)."""
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
 
@@ -25,7 +27,66 @@ class MidiHandler:
         notes = [(n.getOffsetInHierarchy(part), n)
                  for n in part.recurse().notes]
         notes.sort(key=lambda t: t[0])
+
+        if offset < 0:
+            # NEGATIVE OFFSET -> calculate the end of the piece and adjust the offset accordingly
+            end_offset = self.get_duration() + offset
+            notes = [n for n in notes if n[0] >= end_offset]
+
+        elif offset > 0:
+            # POSITIVE OFFSET -> filter notes starting from the given offset
+            notes = [n for n in notes if n[0] >= offset]
+
         return notes
+
+    def get_notes_json(self, measure_nums: int = 0) -> dict:
+        """Get the notes in a flat list format for LLM consumption.
+        Each event is a dict with:
+            - measure: int
+            - offset: float (absolute offset from start of piece)
+            - type: 'note' or 'chord'
+            - pitch: str (for notes)
+            - pitches: list of str (for chords)
+            - duration: str (duration type)
+        If measure_nums is provided, only the notes in the measures 0 -> measure_nums will be returned.
+        If measure_nums is negative, it will return the notes in the last measure_nums measures.
+        """
+        if self.midi_data is None:
+            raise ValueError("MIDI data not loaded.")
+
+        notes = self.get_notes()
+        events = []
+
+        # Get the time signature to calculate measures
+        time_sig = self.midi_data.getTimeSignatures()[0]
+        beats_per_measure = time_sig.numerator / time_sig.denominator * 4  # Convert to quarter notes
+        total_measures = int(self.get_duration() / beats_per_measure)
+
+        for offset, note in notes:
+            measure_num = int(offset / beats_per_measure)
+
+            # Skip if we're only looking for specific measures
+            if measure_nums > 0 and measure_num >= measure_nums:
+                continue
+            if measure_nums < 0 and measure_num < total_measures + measure_nums:
+                continue
+
+            event = {
+                "measure": measure_num,
+                "offset": offset,
+                "duration": note.duration.type
+            }
+            if isinstance(note, m21.note.Note):
+                event["type"] = "note"
+                event["pitch"] = self._format_pitch(note)
+            elif isinstance(note, m21.chord.Chord):
+                event["type"] = "chord"
+                event["pitches"] = [self._format_pitch(p) for p in note.pitches]
+            else:
+                event["type"] = str(type(note))
+                event["pitch"] = str(note)
+            events.append(event)
+        return {"notes": events}
 
     def add_notes(self, notes: List[tuple[int, float, float]]) -> str:
         """Append notes to the MIDI data."""
@@ -157,8 +218,21 @@ class MidiHandler:
         key = (self.midi_data.flatten().keySignature).asKey()
         return key
 
+    def get_readable_key(self):
+        """Get a human-readable string representation of the key signature."""
+        key = self.get_key()
+        if key is None:
+            return "No key signature found"
+        # Replace '-' with 'b' for flats in the tonic name
+        return f"{key.tonic.name.replace('-', 'b')} {key.mode.capitalize()}" if key.mode else key.tonic.name
+
     def save_midi(self, output_file: str):
         if self.midi_data is None:
             raise ValueError("Nothing to save; load or generate MIDI first.")
         self.midi_data.write("midi", fp=output_file)
         print(f"Saved MIDI to {output_file}")
+
+    def _format_pitch(self, pitch):
+        """Format the pitch to a human-readable string.
+        Replaces default music21 representation of flats ('-') with 'b'."""
+        return pitch.nameWithOctave.replace("-", "b")

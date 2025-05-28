@@ -18,28 +18,11 @@ load_dotenv()
 
 # NOTE SPECS FOR LLM
 class NoteInput(BaseModel):
-    """Schema for a single music21 note.
-
-    • **pitch**   — Integer MIDI note number 0‑127 (Middle C = 60).
-    • **duration**— music21 *quarterLength* (1.0 = quarter, 0.5 = eighth, etc.).
-    • **offset**  — Absolute start time in quarterLength (0.0 = piece start).
-    """
+    """Schema for a single music21 note."""
 
     pitch:    int   = Field(..., ge=0, le=127, description="MIDI pitch 0‑127 (Middle C = 60)")
-    duration: float = Field(..., gt=0,          description="quarterLength (1.0 = quarter)")
-    offset:   float = Field(..., ge=0,          description="absolute start time in quarterLength")
-
-
-class EditSpec(BaseModel):
-    """Partial update of a single note.
-
-    Identify the note by its **offset**.  Fields left as *None* stay unchanged.
-    All numeric semantics match those in NoteInput.
-    """
-
-    offset:   float | None = Field(None, ge=0, description="target offset (quarterLength)")
-    pitch:    int   | None = Field(None, ge=0, le=127, description="new MIDI pitch, if changing")
-    duration: float | None = Field(None, gt=0,              description="new quarterLength, if changing")
+    duration: float = Field(..., gt=0,          description="Note length in quarterLength (1.0 = quarter)")
+    offset:   float = Field(..., ge=0,          description="absolute note start time in quarterLength (0.0 = piece start).")
 
 
 # TOOL DEFINITIONS FOR LLM FUNCTION CALLING
@@ -68,11 +51,11 @@ def add_notes(
 def remove_notes(
     start_offset: Annotated[
         float,
-        Field(gt=0, description="Inclusive lower bound of deletion window (quarterLength)."),
+        Field(gt=0, description="Inclusive lower bound of deletion window (in quarterLength)."),
     ],
     end_offset: Annotated[
         float,
-        Field(gt=0, description="Exclusive upper bound of deletion window (quarterLength)."),
+        Field(gt=0, description="Exclusive upper bound of deletion window (in quarterLength)."),
     ],
     state: Annotated[Dict[str, object], InjectedState],
 ) -> str:
@@ -82,27 +65,14 @@ def remove_notes(
 
 
 @tool
-def edit_note(
-    spec: Annotated[
-        EditSpec,
-        Field(description="Identify one note by offset and supply new pitch/duration as needed."),
-    ],
-    state: Annotated[Dict[str, object], InjectedState],
-) -> str:
-    """Modify an existing note’s pitch and/or duration."""
-
-    return state["midi_handler"].edit_note(spec.offset, pitch=spec.pitch, ql=spec.duration)
-
-
-@tool
 def replace_passage(
     start_offset: Annotated[
         float,
-        Field(ge=0, description="Start of passage to replace (quarterLength)."),
+        Field(ge=0, description="Start of passage to replace (in quarterLength)."),
     ],
     end_offset: Annotated[
         float,
-        Field(gt=0, description="End of passage to replace (quarterLength, exclusive)."),
+        Field(gt=0, description="End of passage to replace (in quarterLength, exclusive)."),
     ],
     notes: Annotated[
         List[NoteInput],
@@ -115,7 +85,7 @@ def replace_passage(
     return state["midi_handler"].replace_passage(start_offset, end_offset, [(n.pitch, n.duration) for n in notes])
 
 
-MIDI_TOOLS = [add_notes, remove_notes, edit_note, replace_passage]
+MIDI_TOOLS = [add_notes, remove_notes, replace_passage]
 
 # SETUP SHARED STATE SCHEMA
 class GraphState(TypedDict):
@@ -133,10 +103,10 @@ class GraphState(TypedDict):
 
 
 # SETUP LLM INSTANCES
-_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-composer_llm  = ChatOpenAI(model=_MODEL, temperature=0.7)
-reviewer_llm  = ChatOpenAI(model=_MODEL, temperature=0.0)
-handler_llm   = ChatOpenAI(model=_MODEL, temperature=0.0)
+_MODEL = os.getenv("OPENAI_MODEL", "o4-mini")
+composer_llm  = ChatOpenAI(model=_MODEL, temperature=1)
+reviewer_llm  = ChatOpenAI(model=_MODEL, temperature=1)
+handler_llm   = ChatOpenAI(model=_MODEL, temperature=1)
 
 handler_agent = create_react_agent(model=handler_llm, tools=MIDI_TOOLS, state_schema=GraphState)
 
@@ -157,9 +127,11 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
         from the Composer or Reviewer.
 
         **Numeric semantics (do not change):**
-        • **offset**   — absolute start time in *quarterLength* (0.0 = piece start).
+        • **offset**   — when the note plays relative to the start of the piece in *quarter note lengths* (0.0 = piece start).
         • **pitch**    — MIDI integer 0‑127 (Middle C = 60).
-        • **duration** — *quarterLength* value (1.0 = quarter, 0.25 = sixteenth …).
+        • **duration** — duration of the note in quarter note lengths (4.0 = whole, 2.0 = half, 1.0 = quarter, 0.25 = sixteenth …).
+        
+        ALWAYS ADD NEW NOTES AT AN OFFSET EQUAL TO THE OFFSET OF THE LAST NOTE + THE DURATION OF THE LAST NOTE
 
         After every tool call sequence requested by the message, reply with a
         short natural‑language confirmation and **no additional tool calls**.
@@ -179,9 +151,11 @@ def composer_planner(state: GraphState) -> Dict[str, object]:
 
     prompt = (
         """
-        You are the **Composer** agent.
+        You are the **Composer** agent. Your goal is to continue composing a piece.
 
-        Propose **ONE** specific addition (e.g. add a chord, series of specific 8th notes, etc.).
+        Unless otherwise required, your additions should be measure by measure.
+        
+        For each measure, you u
         
         Be very specific about pitch and duration of the notes.
 
@@ -286,8 +260,8 @@ compiled_graph = graph.compile()
 # SAMPLE RUN
 if __name__ == "__main__":
     MIDI_IN         = "test_input/simple1channel.mid"
-    TARGET_SECONDS  = 24.0
-    MIDI_OUT        = "extended_output.mid"
+    TARGET_SECONDS  = 25.0
+    MIDI_OUT        = "extended_output4.mid"
 
     init_state: GraphState = {
         "midi_path": MIDI_IN,
