@@ -29,16 +29,17 @@ class MidiHandler:
             notes.extend((n.getOffsetInHierarchy(part), n) for n in part.recurse().notes)
         notes.sort(key=lambda t: t[0])
 
-        if offset < 0:
-            # NEGATIVE OFFSET -> calculate the end of the piece and adjust the offset accordingly
-            end_offset = self.get_duration() + offset
-            notes = [n for n in notes if n[0] >= end_offset]
+            if offset < 0:
+                # NEGATIVE OFFSET -> calculate the end of the piece and adjust the offset accordingly
+                end_offset = self.get_duration() + offset
+                notes = [n for n in notes if n[0] >= end_offset]
 
-        elif offset > 0:
-            # POSITIVE OFFSET -> filter notes starting from the given offset
-            notes = [n for n in notes if n[0] >= offset]
+            elif offset > 0:
+                # POSITIVE OFFSET -> filter notes starting from the given offset
+                notes = [n for n in notes if n[0] >= offset]
 
-        return notes
+            notes_by_part.append(notes)
+        return notes_by_part
 
     def get_notes_json(self, measure_nums: int = 0) -> dict:
         """Get the notes in a flat list format for LLM consumption.
@@ -195,15 +196,21 @@ class MidiHandler:
         return roman_numerals
 
 
-    def convert_to_chords(self, window_size = 1):   # window size is in measures
-        notes = self.get_notes()
+    def convert_to_chords(self, window_size = 1):   # window size is in number of eight notes
+        notes_by_part = self.get_notes()
         time_signature = self.get_time_signature()
+
+        notes = [note for part in notes_by_part for note in part]
+        notes.sort(key=lambda note: note[0])  # Sort by offset
+        print(notes)
 
         chords = []
 
-        for i in range(0, self.get_number_of_measures(), window_size):
-            lower_offset = i * time_signature.numerator
-            upper_offset = lower_offset + (window_size * time_signature.numerator)
+        for i in range(0, self.get_number_of_measures() * 8, window_size):
+            lower_offset = i
+            upper_offset = lower_offset + window_size
+
+            print(f"Processing window: {lower_offset} - {upper_offset}")
             window = []
 
             for note in notes:
@@ -211,6 +218,8 @@ class MidiHandler:
                     if isinstance(note[1], m21.note.Note):
                         window.append(note[1])
                     elif isinstance(note[1], m21.chord.Chord):
+                        # for note in note[1]:
+                        #     window.append(note)
                         chords.append(note)
 
             if(len(window) != 0):
