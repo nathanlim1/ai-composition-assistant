@@ -11,6 +11,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langchain_core.tools import tool
 from langgraph.graph import START, END, StateGraph
 from langgraph.prebuilt import InjectedState, create_react_agent
+from langgraph.errors import GraphRecursionError
 from KB import KnowledgeBase
 from MidiHandler import MidiHandler
 
@@ -106,9 +107,9 @@ _ADV_MODEL = os.getenv("OPENAI_MODEL", "o4-mini")
 _BASIC_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 dynamic_rule_builder_llm = ChatOpenAI(model=_ADV_MODEL, temperature=1)
-composer_llm  = ChatOpenAI(model=_BASIC_MODEL, temperature=0.3)
+composer_llm  = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 reviewer_llm  = ChatOpenAI(model=_BASIC_MODEL, temperature=1)
-handler_llm   = ChatOpenAI(model=_BASIC_MODEL, temperature=1)
+handler_llm   = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 
 handler_agent = create_react_agent(model=handler_llm, tools=MIDI_TOOLS, state_schema=GraphState)
 
@@ -128,13 +129,17 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     - Time Signature: {mh.get_time_signature()}
     - Number of Measures: {mh.get_number_of_measures()}
     - Notes: {mh.get_notes_json()}
+    - Chord Progression: {mh.get_human_readable_chord_progression()}
+    - User Prompt: {state["user_prompt"]}
     
     Return a list of specific rules about:
     1. Chord progression patterns
-    2. Note density and spacing
-    3. Melodic patterns and intervals
-    4. Rhythmic patterns
-    5. Any other notable stylistic elements
+    2. Note density and spacing in the melody (right hand)
+    3. Note density and spacing in the harmony (left hand)
+    4. Melodic patterns and intervals
+    5. Rhythmic patterns
+    6. Anything that the user specifically asked for
+    7. Any other notable stylistic elements that should be followed
 
     Be clear enough that a composer could follow the rules to continue the piece in the same style.
     """
@@ -142,6 +147,8 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     analysis_response = dynamic_rule_builder_llm.invoke(analysis_prompt)
     
     kb.generated_rules = analysis_response.content
+
+    print("Generated Rules: ", kb.generated_rules)
 
     handler_system_msg = SystemMessage(
         f"""
@@ -152,17 +159,20 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
 
         **Numeric semantics (do not change):**
         • **offset**   — when the note plays relative to the start of the piece in *quarter note lengths* (0.0 = piece start).
-        • **pitch**    — MIDI integer 0‑127 (Middle C = 60).
+        • **pitch**    — String representing pitch (e.g., 'Bb4', 'C#5').
         • **duration** — duration of the note in quarter note lengths (4.0 = whole, 2.0 = half, 1.0 = quarter, 0.25 = sixteenth …).
-        
-        ALWAYS ADD NEW NOTES AT AN OFFSET EQUAL TO THE OFFSET OF THE LAST NOTE + THE DURATION OF THE LAST NOTE
 
         After every tool call sequence requested by the message, reply with a
         short natural‑language confirmation and **no additional tool calls**.
         """
     )
 
-    return {"kb": kb, "midi_handler": mh, "messages": [handler_system_msg]}
+    return {
+        "kb": kb, 
+        "midi_handler": mh, 
+        "messages": [handler_system_msg],
+        "target_duration": state["target_duration"] + mh.get_duration()  # target = additional + existing
+        }
 
 
 def composer_planner(state: GraphState) -> Dict[str, object]:
@@ -173,12 +183,15 @@ def composer_planner(state: GraphState) -> Dict[str, object]:
     # Preserve the Handler system prompt that was inserted in dynamic_rule_builder
     handler_sys_msg = state["messages"][0] if state["messages"] else None
 
+    # Get the last 8 measures as JSON
+    last_measures_json = mh.get_notes_json(measure_nums=-12)
+
     prompt = (
-        """
+        f"""
         You are the **Composer** agent. Your goal is to continue composing a piece.
 
-        Unless otherwise required, your additions should be 1 measure at a time. You do not need to specify the offset of 
-        measures or notes. Simply explain what you want to add in the next measure.
+        Unless otherwise required, your additions should be 1 measure at a time. Do not specify any specific measure 
+        number. Simply explain what you want to add in.
         
         You should build off the existing piece in the continued style as the previous measures, continuing with similar
         key, rhythm, and harmonic progression.
@@ -193,14 +206,17 @@ def composer_planner(state: GraphState) -> Dict[str, object]:
         to add to the MIDI file.
 
         KNOWLEDGE BASE:
-        {kb}
+        {kb.summary_llm_friendly()}
+
+        The current piece (shortened to last 12 measuresfor brevity):
+        {mh.get_notes_json(measure_nums=-12)}
         """
-    ).format(kb=kb.summary_llm_friendly())
+    )
 
     suggestion: AIMessage = composer_llm.invoke(prompt)
 
-    # Get the last 8 measures as JSON
-    last_measures_json = mh.get_notes_json(measure_nums=-12)
+    print("Composer Edit Intention: ", suggestion.content)
+
     content = f"CONTEXT_NOTES_JSON:\n{last_measures_json}\n\n{suggestion.content}"
 
     # 1) wipe everything, 2) re-add system prompt, 3) deliver new instruction
@@ -246,7 +262,9 @@ def reviewer_planner(state: GraphState) -> Dict[str, object]:
 # ROUTING FUNCTIONS
 
 def after_handler(state: GraphState) -> str:
-    if state["midi_handler"].get_duration() < state["target_duration"]:
+    cur_duration = state["midi_handler"].get_duration()
+    print(f"Current duration: {cur_duration}, target duration: {state['target_duration']}")
+    if cur_duration < state["target_duration"]:
         return "composer_planner"
     return "reviewer_planner"
 
@@ -285,14 +303,14 @@ compiled_graph = graph.compile()
 
 # SAMPLE RUN
 if __name__ == "__main__":
-    MIDI_IN         = "test_input/verysimple1channel.mid"
-    TARGET_SECONDS  = 20.0
-    MIDI_OUT        = "extended_output6.mid"
+    MIDI_IN         = "test_input/complex1channel.mid"
+    TARGET_ADDITIONAL_SECONDS  = 8
+    MIDI_OUT        = "extended_output7.mid"
 
     init_state: GraphState = {
         "midi_path": MIDI_IN,
         "user_prompt": "Extend the excerpt in a similar style.",
-        "target_duration": TARGET_SECONDS,
+        "target_duration": TARGET_ADDITIONAL_SECONDS,
         "kb": None,
         "midi_handler": None,
         "messages": [],
@@ -300,6 +318,10 @@ if __name__ == "__main__":
         "remaining_steps": 30,
     }
 
-    final = compiled_graph.invoke(init_state)
+    try:
+        final = compiled_graph.invoke(init_state, {"recursion_limit": 50})
+    except GraphRecursionError:
+        print("Graph recursion error")
+
     final["midi_handler"].save_midi(final["output_midi"])
     print(f"Saved composed MIDI -> {final['output_midi']}")

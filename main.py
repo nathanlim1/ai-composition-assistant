@@ -2,7 +2,7 @@ from MidiHandler import MidiHandler
 from KB import KnowledgeBase
 
 def main():
-    midi_handler = MidiHandler('test_input/verysimple1channel.mid')
+    midi_handler = MidiHandler('test_input/complex1channel.mid')
     print("Key: ", midi_handler.get_readable_key())
     print()
     print("Length in Measures: ", midi_handler.get_number_of_measures())
@@ -29,10 +29,6 @@ def main():
     hr_progression = midi_handler.get_human_readable_chord_progression()
     print("Human-readable Chord Progression: ", hr_progression)
     print()
-
-    kb = KnowledgeBase()
-    kb.build_algorithmic_dynamic(midi_handler)
-    print("KB: ", kb.summary_llm_friendly())
 
 
 

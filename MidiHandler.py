@@ -24,9 +24,9 @@ class MidiHandler:
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
 
-        part = self.midi_data.parts[0]
-        notes = [(n.getOffsetInHierarchy(part), n)
-                 for n in part.recurse().notes]
+        notes = []
+        for part in self.midi_data.parts:
+            notes.extend((n.getOffsetInHierarchy(part), n) for n in part.recurse().notes)
         notes.sort(key=lambda t: t[0])
 
         if offset < 0:
