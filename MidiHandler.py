@@ -1,6 +1,7 @@
 from typing import List
 
 import music21 as m21
+from sympy import Q
 
 class MidiHandler:
     def __init__(self, midi_file):
@@ -28,6 +29,25 @@ class MidiHandler:
         for part in self.midi_data.parts:
             notes.extend((n.getOffsetInHierarchy(part), n) for n in part.recurse().notes)
         notes.sort(key=lambda t: t[0])
+
+        if offset < 0:
+            # NEGATIVE OFFSET -> calculate the end of the piece and adjust the offset accordingly
+            end_offset = self.get_duration() + offset
+            notes = [n for n in notes if n[0] >= end_offset]
+
+        elif offset > 0:
+            # POSITIVE OFFSET -> filter notes starting from the given offset
+            notes = [n for n in notes if n[0] >= offset]
+        return notes
+
+    def get_notes_by_part(self,  offset: float = 0.0):
+        if self.midi_data is None:
+            raise ValueError("MIDI data not loaded.")
+
+        notes_by_part = []
+        for part in self.midi_data.parts:
+            notes = []
+            notes = [(n.getOffsetInHierarchy(part), n) for n in part.recurse().notes]
 
             if offset < 0:
                 # NEGATIVE OFFSET -> calculate the end of the piece and adjust the offset accordingly
@@ -176,41 +196,36 @@ class MidiHandler:
             return "No time signature found"
         return f"{time_sig.numerator}/{time_sig.denominator}" if time_sig.numerator and time_sig.denominator else "Unknown time signature"
 
-    def get_human_readable_chord_progression(self):
-        chord_progression = self.get_chord_progression(self.convert_to_chords())
+    def get_human_readable_chord_progression(self, chord_progression):
         progression_string = []
-        for chord in chord_progression:
+        for offset, chord in chord_progression:
             if isinstance(chord, m21.roman.RomanNumeral):
-                progression_string.append(f"{chord.figure}")
+                progression_string.append(f"offset: {offset}, chord figure: {chord.figure}")
         return str(progression_string)
 
-    def get_chord_progression(self, chords):
+    def get_chord_progression(self, notes):
         # Get the key of the MIDI file
         key = self.get_key()
         roman_numerals = []
 
-        for _, chord in chords:
+        chords = self.convert_to_chords(notes)
+
+        for offset, chord in chords:
             # Convert the chord to a Roman numeral in the given key
             roman = m21.roman.romanNumeralFromChord(chord, key)
-            roman_numerals.append(roman)
+            roman_numerals.append((offset, roman))
         return roman_numerals
 
 
-    def convert_to_chords(self, window_size = 1):   # window size is in number of eight notes
-        notes_by_part = self.get_notes()
+    def convert_to_chords(self, notes, window_size = 2):   # window size is in number of eight notes
         time_signature = self.get_time_signature()
 
-        notes = [note for part in notes_by_part for note in part]
-        notes.sort(key=lambda note: note[0])  # Sort by offset
-        print(notes)
-
         chords = []
+        measure_factor = int((time_signature.numerator / time_signature.denominator) * 4)
 
-        for i in range(0, self.get_number_of_measures() * 8, window_size):
+        for i in range(0, self.get_number_of_measures() * measure_factor, window_size):
             lower_offset = i
             upper_offset = lower_offset + window_size
-
-            print(f"Processing window: {lower_offset} - {upper_offset}")
             window = []
 
             for note in notes:
@@ -218,8 +233,6 @@ class MidiHandler:
                     if isinstance(note[1], m21.note.Note):
                         window.append(note[1])
                     elif isinstance(note[1], m21.chord.Chord):
-                        # for note in note[1]:
-                        #     window.append(note)
                         chords.append(note)
 
             if(len(window) != 0):

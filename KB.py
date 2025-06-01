@@ -125,20 +125,32 @@ class KnowledgeBase:
 
         time_signature = midi_handler.get_human_readable_time_signature()
         self.dynamic_context["time_signature"] = time_signature
-
-        chord_progression = midi_handler.get_human_readable_chord_progression()
-        self.dynamic_context["chord_progression"] = chord_progression
+        
+        notes_by_part = midi_handler.get_notes_by_part()
+        if(len(notes_by_part) == 2):
+            self.dynamic_context["treble_chord_progression"] = notes_by_part[0]
+            self.dynamic_context["bass_chord_progression"] = notes_by_part[1]
+        else:
+            self.dynamic_context["chord_progression"] = midi_handler.get_chord_progression(midi_handler.get_notes())
 
     def summary_llm_friendly(self) -> str:
         """
         Returns all rules in a format that is most LLM-friendly: clear, concise, grouped by category, with each rule as a short, direct statement. Ignores severity and suggestion fields. Includes generated rules as a separate section if present.
         """
         lines: list[str] = [
-            f"**Key:** {self.dynamic_context.get('key', 'Unknown')}\n"
+            f"**Key:** {self.dynamic_context.get('key', 'Unknown')}\n",
             f"**Time Signature:** {self.dynamic_context.get('time_signature', 'Unknown')}\n"
-            f"**Chord Progression:** {self.dynamic_context.get('chord_progression', 'Unknown')}\n"
-            f"**Generated Rules:** {self.generated_rules}\n"
-            ]
+        ]
+        
+        # Output either chord progression or treble+bass chord progression
+        if "chord_progression" in self.dynamic_context:
+            lines.append(f"**Chord Progression:** {self.dynamic_context.get('chord_progression', 'Unknown')}\n")
+        elif "treble_chord_progression" in self.dynamic_context and "bass_chord_progression" in self.dynamic_context:
+            lines.append(f"**Treble Chord Progression:** {self.dynamic_context.get('treble_chord_progression', 'Unknown')}\n")
+            lines.append(f"**Bass Chord Progression:** {self.dynamic_context.get('bass_chord_progression', 'Unknown')}\n")
+
+        lines.append(f"**Generated Rules:** {self.generated_rules}\n")
+
         # Static rules
         for cat, rules in self.rules.items():
             lines.append(f"### {cat.replace('_', ' ').title()} Rules")
