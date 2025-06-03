@@ -122,6 +122,13 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     kb = KnowledgeBase()
     kb.build_algorithmic_dynamic(mh)
 
+    notes_by_part = mh.get_notes_by_part()
+    if(len(notes_by_part) == 2):
+        treble_chords = mh.get_chord_progression(notes_by_part[0])
+        bass_chords = mh.get_chord_progression(notes_by_part[1])
+    else:
+        chords = mh.get_chord_progression(mh.get_notes())
+
     # Get stylistic analysis from LLM
     analysis_prompt = f"""
     Analyze the following MIDI file and provide a list of stylistic rules and patterns:
@@ -129,7 +136,17 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     - Time Signature: {mh.get_time_signature()}
     - Number of Measures: {mh.get_number_of_measures()}
     - Notes: {mh.get_notes_json()}
-    - Chord Progression: {mh.get_human_readable_chord_progression()}
+    """
+    if len(notes_by_part) == 2:
+        analysis_prompt += f"""
+        - Treble Chord Progression: {mh.get_human_readable_chord_progression(treble_chords)}
+        - Bass Chord Progression: {mh.get_human_readable_chord_progression(bass_chords)}
+        """
+    else:
+        analysis_prompt += f"""
+        - Chord Progression: {mh.get_human_readable_chord_progression(chords)}
+        """
+    analysis_prompt += f"""
     - User Prompt: {state["user_prompt"]}
     
     Return a list of specific rules about:
@@ -303,9 +320,9 @@ compiled_graph = graph.compile()
 
 # SAMPLE RUN
 if __name__ == "__main__":
-    MIDI_IN         = "test_input/complex1channel.mid"
+    MIDI_IN         = "test_input/bach_minuet_in_g_116.mid"
     TARGET_ADDITIONAL_SECONDS  = 8
-    MIDI_OUT        = "extended_output7.mid"
+    MIDI_OUT        = "our_generated_output/bach_minuet_in_g_116.mid"
 
     init_state: GraphState = {
         "midi_path": MIDI_IN,

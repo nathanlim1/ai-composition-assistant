@@ -128,10 +128,13 @@ class KnowledgeBase:
         
         notes_by_part = midi_handler.get_notes_by_part()
         if(len(notes_by_part) == 2):
-            self.dynamic_context["treble_chord_progression"] = notes_by_part[0]
-            self.dynamic_context["bass_chord_progression"] = notes_by_part[1]
+            treble_chords = midi_handler.get_chord_progression(notes_by_part[0])
+            bass_chords = midi_handler.get_chord_progression(notes_by_part[1])
+            self.dynamic_context["treble_chord_progression"] = midi_handler.get_human_readable_chord_progression(treble_chords)
+            self.dynamic_context["bass_chord_progression"] = midi_handler.get_human_readable_chord_progression(bass_chords)
         else:
-            self.dynamic_context["chord_progression"] = midi_handler.get_chord_progression(midi_handler.get_notes())
+            chords = midi_handler.get_chord_progression(midi_handler.get_notes())
+            self.dynamic_context["chord_progression"] = midi_handler.get_human_readable_chord_progression(chords)
 
     def summary_llm_friendly(self) -> str:
         """

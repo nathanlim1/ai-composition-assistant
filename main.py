@@ -1,7 +1,7 @@
 from MidiHandler import MidiHandler
 
 def main():
-    midi_handler = MidiHandler('test_input/moonlightsonata_1st_mvmt.mid')
+    midi_handler = MidiHandler('test_input/bach_minuet_in_g_116.mid')
     print("Key: ", midi_handler.get_readable_key())
     print()
     print("Length in Measures: ", midi_handler.get_number_of_measures())
