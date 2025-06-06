@@ -1,51 +1,68 @@
-from MidiHandler import MidiHandler
+import argparse
+import sys
+from compositionAgent import compiled_graph, GraphState
+from langgraph.errors import GraphRecursionError
+
 
 def main():
-    midi_handler = MidiHandler('test_input/bach_minuet_in_g_116.mid')
-    print("Key: ", midi_handler.get_readable_key())
+    """Main function to run the AI composition assistant."""
+    parser = argparse.ArgumentParser(description="AI Composition Assistant")
+    parser.add_argument("--input", "-i", default="test_input/bach_minuet_in_g_116.mid",
+                       help="Input MIDI file path")
+    parser.add_argument("--output", "-o", default="our_generated_output/extended_piece.mid", 
+                       help="Output MIDI file path")
+    parser.add_argument("--measures", "-m", type=float, default=8.0,
+                       help="Additional measures to extend")
+    parser.add_argument("--prompt", "-p", default="Extend the excerpt in a similar style.",
+                       help="User prompt for composition guidance")
+    parser.add_argument("--recursion-limit", "-r", type=int, default=50,
+                       help="Maximum recursion limit for the graph")
+    parser.add_argument("--max-review-iterations", type=int, default=3,
+                       help="Maximum number of review iterations to prevent infinite loops")
+    
+    args = parser.parse_args()
+    
+    # Initialize the state for the composition graph
+    init_state: GraphState = {
+        "midi_path": args.input,
+        "user_prompt": args.prompt,
+        "add_measures": args.measures,
+        "target_measures": 0,
+        "kb": None,
+        "midi_handler": None,
+        "messages": [],
+        "output_midi": args.output,
+        "remaining_steps": 30,
+        "reviewer_satisfied": False,
+        "review_iterations": 0,
+        "max_review_iterations": args.max_review_iterations,
+        "in_review_mode": False,
+    }
+    
+    print(f"Starting composition with:")
+    print(f"  Input MIDI: {args.input}")
+    print(f"  Output MIDI: {args.output}")
+    print(f"  Additional measures: {args.measures}")
+    print(f"  Prompt: {args.prompt}")
     print()
-    print("Length in Measures: ", midi_handler.get_number_of_measures())
-    print()
-    print("Length in seconds: ", midi_handler.get_duration())
-    print()
-    print("Time Signature: ", midi_handler.get_time_signature())
-    print()
-    print("Human-readable Time Signature: ", midi_handler.get_human_readable_time_signature())
-    print()
-    notes = midi_handler.get_notes()
-    print("Notes: ", notes)
-    print()
-    print("Notes JSON: ", midi_handler.get_notes_json())
-    print()
-
-    notes_by_part = midi_handler.get_notes_by_part()
-    print("Notes by part: ", notes_by_part)
-    print()
-
-
-    print("Extracting chords from all notes:")
-    chords = midi_handler.convert_to_chords(notes)
-    print("Underlying chords: ", chords)
-    print()
-
-    progression = midi_handler.get_chord_progression(chords)
-    print("Chord Progression: ", progression)
-    print()
-    print()
-
-    print("Extracting chords from notes by part:")
-    for notes in notes_by_part:
-        chords_by_part = midi_handler.convert_to_chords(notes)
-        chord_progression = midi_handler.get_chord_progression(chords_by_part)
-        hr_chord_progression = midi_handler.get_human_readable_chord_progression(chord_progression)
-        print("Underlying chords by part: ", chords_by_part)
-        print()
-        print("Chord Progression by part: ", chord_progression)
-        print()
-        print("Human-readable Chord Progression: ", hr_chord_progression)
-        print()
-
-
+    
+    try:
+        # Run the composition graph
+        final = compiled_graph.invoke(init_state, {"recursion_limit": args.recursion_limit})
+        
+        # Save the composed MIDI
+        final["midi_handler"].save_midi(final["output_midi"])
+        print(f"Successfully saved composed MIDI -> {final['output_midi']}")
+        
+    except GraphRecursionError:
+        print("Graph recursion error: The composition process exceeded the recursion limit.")
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"File not found: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An error occurred during composition: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

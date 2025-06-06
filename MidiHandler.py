@@ -159,29 +159,45 @@ class MidiHandler:
 
 
     def get_duration(self) -> float:
-        """
-        Return the real‑time duration of the currently‑loaded MIDI
-        (in seconds), accounting for all tempo changes.
-        """
+        """Return the real‑time duration of the currently‑loaded MIDI (in seconds), 
+        accounting for all tempo changes."""
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
 
         # self.midi_data is already a Stream
-        smap = self.midi_data.secondsMap          # list of dicts
+        smap = self.midi_data.secondsMap  # list of dicts
 
-        if not smap:                              # empty score
+        if not smap:  # empty score
             return 0.0
 
-        last = max(smap,
-                   key=lambda d: d['offsetSeconds'] + d['durationSeconds'])
+        last = max(smap, key=lambda d: d['offsetSeconds'] + d['durationSeconds'])
 
         return last['offsetSeconds'] + last['durationSeconds']
 
     def get_number_of_measures(self):
-        # Get the number of measures in the MIDI file
+        # Get the current number of measures in the MIDI file
         if self.midi_data is None:
             raise ValueError("MIDI data not loaded.")
-        return len(self.midi_data.parts[0].getElementsByClass(m21.stream.Measure))
+        
+        # Get all notes to find the latest offset
+        notes = self.get_notes()
+        if not notes:
+            return 0
+        
+        # Find the latest note end time (offset + duration)
+        latest_end = 0.0
+        for offset, note in notes:
+            note_end = offset + note.quarterLength
+            if note_end > latest_end:
+                latest_end = note_end
+        
+        # Calculate measures based on time signature
+        time_sig = self.midi_data.getTimeSignatures()[0]
+        beats_per_measure = time_sig.numerator / time_sig.denominator * 4  # Convert to quarter notes
+        
+        # Calculate number of measures (round up to include partial measures)
+        import math
+        return math.ceil(latest_end / beats_per_measure)
 
     def get_time_signature(self):
         # Extract the time signature from the MIDI data
