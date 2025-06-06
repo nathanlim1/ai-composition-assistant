@@ -82,7 +82,7 @@ def replace_passage(
 ) -> str:
     """Atomically wipe a region and insert new notes."""
 
-    return state["midi_handler"].replace_passage(start_offset, end_offset, [(n.pitch, n.duration) for n in notes])
+    return state["midi_handler"].replace_passage(start_offset, end_offset, [(n.pitch, n.duration, n.offset) for n in notes])
 
 
 MIDI_TOOLS = [add_notes, remove_notes, replace_passage]
@@ -91,7 +91,8 @@ MIDI_TOOLS = [add_notes, remove_notes, replace_passage]
 class GraphState(TypedDict):
     midi_path:       str
     user_prompt:     str
-    target_duration: float
+    add_measures:    int
+    target_measures: int
 
     kb:           KnowledgeBase | None
     midi_handler: MidiHandler   | None
@@ -100,6 +101,10 @@ class GraphState(TypedDict):
     output_midi:  str
 
     remaining_steps: int  # max tool-call hops
+    reviewer_satisfied: bool  # tracks if reviewer is satisfied with the composition
+    review_iterations: int  # count of review iterations to prevent infinite loops
+    max_review_iterations: int  # maximum allowed review iterations
+    in_review_mode: bool  # explicitly tracks if we're in review mode vs composition mode
 
 
 # SETUP LLM INSTANCES
@@ -108,7 +113,7 @@ _BASIC_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 dynamic_rule_builder_llm = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 composer_llm  = ChatOpenAI(model=_ADV_MODEL, temperature=1)
-reviewer_llm  = ChatOpenAI(model=_BASIC_MODEL, temperature=1)
+reviewer_llm  = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 handler_llm   = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 
 handler_agent = create_react_agent(model=handler_llm, tools=MIDI_TOOLS, state_schema=GraphState)
@@ -150,11 +155,11 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     - User Prompt: {state["user_prompt"]}
     
     Return a list of specific rules about:
-    1. Chord progression patterns
+    1. Chord progression patterns, including phrase length and cadences
     2. Note density and spacing in the melody (right hand)
     3. Note density and spacing in the harmony (left hand)
     4. Melodic patterns and intervals
-    5. Rhythmic patterns
+    5. Rhythmic patterns (be very specific about how it should be continued and any variations)
     6. Anything that the user specifically asked for
     7. Any other notable stylistic elements that should be followed
 
@@ -187,8 +192,8 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     return {
         "kb": kb, 
         "midi_handler": mh, 
-        "messages": [handler_system_msg],
-        "target_duration": state["target_duration"] + mh.get_duration()  # target = additional + existing
+        "target_measures": state["add_measures"] + mh.get_number_of_measures(),
+        "messages": [handler_system_msg]
         }
 
 
@@ -225,7 +230,7 @@ def composer_planner(state: GraphState) -> Dict[str, object]:
         KNOWLEDGE BASE:
         {kb.summary_llm_friendly()}
 
-        The current piece (shortened to last 12 measuresfor brevity):
+        The current piece (shortened to last 12 measures for brevity):
         {mh.get_notes_json(measure_nums=-12)}
         """
     )
@@ -250,44 +255,123 @@ def reviewer_planner(state: GraphState) -> Dict[str, object]:
     """Have the Reviewer check for rule violations and propose one fix, if any."""
 
     mh, kb = state["midi_handler"], state["kb"]
+    
+    # Increment review iteration count
+    # Review iterations are expensive, since the entire piece is sent to the LLM
+    current_iterations = state.get("review_iterations", 0)
+    max_review_iterations = state.get("max_review_iterations", 5)
+    
+    # Check if we've exceeded max iterations
+    if current_iterations >= max_review_iterations:
+        print(f"Maximum review iterations ({max_review_iterations}) reached. Ending review process.")
+        return {
+            "reviewer_satisfied": True,
+            "review_iterations": current_iterations + 1,
+            "in_review_mode": False  # Exit review mode when max iterations reached
+        }
+    
+    print(f"Review iteration {current_iterations + 1}/{max_review_iterations}")
 
     prompt = (
-        """
+        f"""
         You are the **Reviewer** agent.
 
         Inspect the entire piece against the Knowledge Base.  If you find a
-        violation, describe **ONE** short fix. Otherwise reply with an empty
-        string.
+        violation, describe a replacement for the specific measure that is in violation.
 
-        Numeric semantics are fixed (pitch = MIDI, duration = quarterLength,
-        offset = quarterLength).
+        Be very specific about pitch (class and octave), placement, and duration of all the notes you want to be
+        in the measure you are replacing.
+        
+        You do not need to specify anything about dynamics, articulations, or other performance details.
+
+        Keep your instruction specific, but concise.
+
+        Your instructions will be sent to another AI agent who will use those instructions
+        to make changes to the MIDI file.
+
+        **Do not make unnecessary changes. If no changes need to be made, respond the word "Verified".**
+
+                **Numeric semantics (do not change):**
+        • **offset**   — when the note plays relative to the start of the piece in *quarter note lengths* (0.0 = piece start).
+        • **pitch**    — String representing pitch (e.g., 'Bb4', 'C#5').
+        • **duration** — duration of the note in quarter note lengths (4.0 = whole, 2.0 = half, 1.0 = quarter, 0.25 = sixteenth …).
+
 
         KNOWLEDGE BASE:
-        {kb}
+        {kb.summary_llm_friendly()}
+
+        The current piece, shortened to last {state["add_measures"]} measures for brevity:
+        {mh.get_notes_json(measure_nums=-(state["add_measures"]))}
         """
-    ).format(kb=kb.summary_llm_friendly())
+    )  # Only provide the added measures to the reviewer
 
     critique: AIMessage = reviewer_llm.invoke(prompt)
+    
+    if critique.content.strip().lower() == "verified":
+        print("Reviewer is satisfied with the composition.")
+        return {
+            "reviewer_satisfied": True,
+            "review_iterations": current_iterations + 1,
+            "in_review_mode": False  # Exit review mode when satisfied
+        }
+    
+    print(f"Reviewer critique: '{critique.content.strip()}'")
 
-    # Get the entire piece as JSON
-    all_notes_json = mh.get_notes_json()
-    content = f"CONTEXT_NOTES_JSON:\n{all_notes_json}\n\n{critique.content}"
-
-    return {"messages": [HumanMessage(content=content)]}
+    # Store the reviewer's response to determine next action
+    reviewer_feedback = critique.content.strip()
+    
+    if reviewer_feedback:
+        # Reviewer found issues, prepare message for handler
+        all_notes_json = mh.get_notes_json()
+        content = f"CONTEXT_NOTES_JSON:\n{all_notes_json}\n\n{reviewer_feedback}"
+        return {
+            "messages": [HumanMessage(content=content)],
+            "reviewer_satisfied": False,
+            "review_iterations": current_iterations + 1,
+            "in_review_mode": True  # Set review mode when issues found
+        }
+    else:
+        # Reviewer is satisfied (empty response)
+        print("Reviewer is satisfied with the composition.")
+        return {
+            "reviewer_satisfied": True,
+            "review_iterations": current_iterations + 1,
+            "in_review_mode": False  # Exit review mode when satisfied
+        }
 
 
 # ROUTING FUNCTIONS
 
 def after_handler(state: GraphState) -> str:
-    cur_duration = state["midi_handler"].get_duration()
-    print(f"Current duration: {cur_duration}, target duration: {state['target_duration']}")
-    if cur_duration < state["target_duration"]:
+    """Route after handler: check if we're in review loop or composition loop."""
+    
+    # If we're in review mode, go back to reviewer for re-evaluation
+    if state.get("in_review_mode", False):
+        print("Handler completed reviewer's fix. Going back to reviewer for re-evaluation.")
+        return "reviewer_planner"
+    
+    # Otherwise, we're in the normal composition flow
+    cur_measures = state["midi_handler"].get_number_of_measures()
+    print(f"Current duration: {state['midi_handler'].get_duration()}")
+    print(f"Current measures: {cur_measures}, target measures: {state['target_measures']}")
+    if cur_measures < state["target_measures"]:
         return "composer_planner"
-    return "reviewer_planner"
+    else:
+        print("Target measures reached. Moving to review phase.")
+        state["midi_handler"].save_midi(f"our_generated_output/output_{cur_measures}.mid")
+        return "reviewer_planner"
 
 
 def after_reviewer(state: GraphState) -> str:
-    return END  # TODO: switch back to reviewer to loop against KB
+    """Route after reviewer: if satisfied, end; if not, go back to handler for fixes."""
+    
+    # Check if reviewer is satisfied
+    if state.get("reviewer_satisfied", False):
+        print("Reviewer approved the composition. Finishing.")
+        return END
+    else:
+        print("Reviewer found issues. Sending to handler for fixes.")
+        return "handler_agent"
 
 
 
@@ -317,28 +401,3 @@ graph.add_conditional_edges(
 )
 
 compiled_graph = graph.compile()
-
-# SAMPLE RUN
-if __name__ == "__main__":
-    MIDI_IN         = "test_input/bach_minuet_in_g_116.mid"
-    TARGET_ADDITIONAL_SECONDS  = 8
-    MIDI_OUT        = "our_generated_output/bach_minuet_in_g_116.mid"
-
-    init_state: GraphState = {
-        "midi_path": MIDI_IN,
-        "user_prompt": "Extend the excerpt in a similar style.",
-        "target_duration": TARGET_ADDITIONAL_SECONDS,
-        "kb": None,
-        "midi_handler": None,
-        "messages": [],
-        "output_midi": MIDI_OUT,
-        "remaining_steps": 30,
-    }
-
-    try:
-        final = compiled_graph.invoke(init_state, {"recursion_limit": 50})
-    except GraphRecursionError:
-        print("Graph recursion error")
-
-    final["midi_handler"].save_midi(final["output_midi"])
-    print(f"Saved composed MIDI -> {final['output_midi']}")

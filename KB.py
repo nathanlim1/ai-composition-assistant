@@ -56,11 +56,6 @@ class KnowledgeBase:
                     "severity": "hard",
                     "suggestion": "Check every V⁷→I, ii⁷→V, etc., for proper resolution.",
                 },
-                "retain_common_tones": {
-                    "desc": "Whenever possible, keep common tones between successive chords in the same voice.",
-                    "severity": "soft",
-                    "suggestion": "Write one voice stationary and move the others.",
-                },
                 "no_doubled_leading_tone": {
                     "desc": "Never double the leading tone in minor or major keys.",
                     "severity": "hard",
@@ -152,6 +147,7 @@ class KnowledgeBase:
             lines.append(f"**Treble Chord Progression:** {self.dynamic_context.get('treble_chord_progression', 'Unknown')}\n")
             lines.append(f"**Bass Chord Progression:** {self.dynamic_context.get('bass_chord_progression', 'Unknown')}\n")
 
+        # Generated rules (from LLM analysis)
         lines.append(f"**Generated Rules:** {self.generated_rules}\n")
 
         # Static rules
@@ -159,14 +155,7 @@ class KnowledgeBase:
             lines.append(f"### {cat.replace('_', ' ').title()} Rules")
             for rid, meta in rules.items():
                 lines.append(f"- {meta['desc']}")
-        # Generated rules (from LLM analysis)
-        if hasattr(self, 'generated_rules') and self.generated_rules:
-            lines.append("\n### Style Analysis (LLM-generated)")
-            if isinstance(self.generated_rules, str):
-                lines.append(self.generated_rules.strip())
-            elif isinstance(self.generated_rules, list):
-                for rule in self.generated_rules:
-                    lines.append(f"- {rule}")
+
         return "\n".join(lines)
 
 kb = KnowledgeBase()
