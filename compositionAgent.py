@@ -82,7 +82,7 @@ def replace_passage(
 ) -> str:
     """Atomically wipe a region and insert new notes."""
 
-    return state["midi_handler"].replace_passage(start_offset, end_offset, [(n.pitch, n.duration) for n in notes])
+    return state["midi_handler"].replace_passage(start_offset, end_offset, [(n.pitch, n.duration, n.offset) for n in notes])
 
 
 MIDI_TOOLS = [add_notes, remove_notes, replace_passage]
@@ -113,7 +113,7 @@ _BASIC_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 dynamic_rule_builder_llm = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 composer_llm  = ChatOpenAI(model=_ADV_MODEL, temperature=1)
-reviewer_llm  = ChatOpenAI(model=_BASIC_MODEL, temperature=1)
+reviewer_llm  = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 handler_llm   = ChatOpenAI(model=_ADV_MODEL, temperature=1)
 
 handler_agent = create_react_agent(model=handler_llm, tools=MIDI_TOOLS, state_schema=GraphState)
@@ -155,11 +155,11 @@ def dynamic_rule_builder(state: GraphState) -> Dict[str, object]:
     - User Prompt: {state["user_prompt"]}
     
     Return a list of specific rules about:
-    1. Chord progression patterns
+    1. Chord progression patterns, including phrase length and cadences
     2. Note density and spacing in the melody (right hand)
     3. Note density and spacing in the harmony (left hand)
     4. Melodic patterns and intervals
-    5. Rhythmic patterns
+    5. Rhythmic patterns (be very specific about how it should be continued and any variations)
     6. Anything that the user specifically asked for
     7. Any other notable stylistic elements that should be followed
 
@@ -277,10 +277,10 @@ def reviewer_planner(state: GraphState) -> Dict[str, object]:
         You are the **Reviewer** agent.
 
         Inspect the entire piece against the Knowledge Base.  If you find a
-        violation, describe a replacement/fix. Be specific about what measures should be replaced.
+        violation, describe a replacement for the specific measure that is in violation.
 
         Be very specific about pitch (class and octave), placement, and duration of all the notes you want to be
-        added in the place of the measures to be replaced.
+        in the measure you are replacing.
         
         You do not need to specify anything about dynamics, articulations, or other performance details.
 
@@ -289,7 +289,7 @@ def reviewer_planner(state: GraphState) -> Dict[str, object]:
         Your instructions will be sent to another AI agent who will use those instructions
         to make changes to the MIDI file.
 
-        **Do not make unnecessary changes. If no changes need to be made, respond with an empty string.**
+        **Do not make unnecessary changes. If no changes need to be made, respond the word "Verified".**
 
                 **Numeric semantics (do not change):**
         • **offset**   — when the note plays relative to the start of the piece in *quarter note lengths* (0.0 = piece start).
@@ -307,7 +307,7 @@ def reviewer_planner(state: GraphState) -> Dict[str, object]:
 
     critique: AIMessage = reviewer_llm.invoke(prompt)
     
-    if critique.content.strip() == "":
+    if critique.content.strip().lower() == "verified":
         print("Reviewer is satisfied with the composition.")
         return {
             "reviewer_satisfied": True,

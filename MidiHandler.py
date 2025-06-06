@@ -148,13 +148,13 @@ class MidiHandler:
                 return f"Edited note at {offset}: now pitch={n.pitch.midi}, ql={n.quarterLength}"
         return "No note found to edit."
 
-    def replace_passage(self, start: float, end: float, notes: List[tuple[str, float]]) -> str:
-        """High-level helper that wipes out a passage between [start,end] and inserts notes sequentially. Pitch must be a string (e.g., 'Bb4')."""
+    def replace_passage(self, start: float, end: float, notes: List[tuple[str, float, float]]) -> str:
+        """High-level helper that wipes out a passage between [start,end] and inserts notes with specified offsets. 
+        Pitch must be a string (e.g., 'Bb4'). Offsets are relative to start."""
         self.remove_notes(start, end)
-        cur = start
-        for pitch, ql in notes:
-            self.add_notes([(pitch, ql, cur)])
-            cur += ql
+        for pitch, ql, relative_offset in notes:
+            absolute_offset = start + relative_offset
+            self.add_notes([(pitch, ql, absolute_offset)])
         return f"Replaced passage {start}‑{end} with {len(notes)} notes."
 
 
