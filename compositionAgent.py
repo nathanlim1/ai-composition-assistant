@@ -358,7 +358,7 @@ def after_handler(state: GraphState) -> str:
         return "composer_planner"
     else:
         print("Target measures reached. Moving to review phase.")
-        state["midi_handler"].save_midi(f"our_generated_output/output_{cur_measures}.mid")
+        state["midi_handler"].save_midi(f"our_generated_output/last_output_pre_review.mid")
         return "reviewer_planner"
 
 
