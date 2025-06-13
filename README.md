@@ -49,7 +49,7 @@ All default parameters except the input and output filenames were kept the same 
 
 ## Reproducing Results from the Paper
 
-We purposefully use OpenAI LLMs with a temperature set to 1, meaning that there is stochastic nature to the LLMs output. That is, given the same input the LLMs will not produce the same output. This means every run of our system will produce different results. We have placed outputs that our system has generated in /our_generated_output, but feel free to run `main.py` to reproduce composition results (however, they will be different from what has been created).
+We purposefully use OpenAI LLMs with a temperature set to 1, meaning that there is stochastic nature to the LLMs output. That is, given the same input the LLMs will not produce the same output. This means every run of our system will produce different results. We have placed outputs that our system has generated in /our_generated_output in both MIDI and mp3 format (in case using an OpenAI API key or running is otherwise not possible), but feel free to run `main.py` to reproduce composition results (however, they will be different from what has been created).
 
 ---
 
