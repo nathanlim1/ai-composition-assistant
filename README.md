@@ -1,6 +1,6 @@
-# LLM‑Knowledge‑Based AI MIDI Composition Assistant
+# AI MIDI Composition Assistant
 
-### CSC 481 – Knowledge‑Based Systems, Cal Poly, Spring 2025
+### Final Project: CSC 481 – Knowledge‑Based Systems, Cal Poly, Spring 2025
 
 Instructor: **Prof. Rodrigo Canaan**
 Team: Nathan Lim, Jeremiah Liao, Colin Ngo, and Jerry Tang.
