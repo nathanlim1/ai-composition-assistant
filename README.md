@@ -6,7 +6,7 @@ Instructor: **Prof. Rodrigo Canaan**
 
 Team: Nathan Lim, Jeremiah Liao, Colin Ngo, and Jerry Tang.
 
-This repository contains the complete source code, evaluation scripts, and demos for our final course project. The system combines a knowledge base of music‑theory rules with an AI LLM-based composer using OpenAI GPT‑4o‑mini to extend a seed MIDI excerpt while respecting harmonic and stylistic constraints.
+This repository contains the complete source code, evaluation scripts, and demos for our final course project. The system combines a knowledge base of music‑theory rules with an AI LLM-based composer using OpenAI GPT‑o4‑mini to extend a seed MIDI excerpt while respecting harmonic and stylistic constraints.
 
 ---
 
