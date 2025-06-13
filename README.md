@@ -2,7 +2,7 @@
 
 ### Final Project: CSC 481 – Knowledge‑Based Systems, Cal Poly, Spring 2025
 
-Instructor: **Prof. Rodrigo Canaan**
+Instructor: **Dr. Rodrigo Canaan**
 
 Team: Nathan Lim, Jeremiah Liao, Colin Ngo, and Jerry Tang.
 
