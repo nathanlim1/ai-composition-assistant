@@ -12,8 +12,8 @@ from langchain_core.tools import tool
 from langgraph.graph import START, END, StateGraph
 from langgraph.prebuilt import InjectedState, create_react_agent
 from langgraph.errors import GraphRecursionError
-from KB import KnowledgeBase
-from MidiHandler import MidiHandler
+from src.KB import KnowledgeBase
+from src.MidiHandler import MidiHandler
 
 load_dotenv()
 

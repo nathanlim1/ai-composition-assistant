@@ -1,4 +1,4 @@
-from MidiHandler import MidiHandler
+from src.MidiHandler import MidiHandler
 
 def main():
     midi_handler = MidiHandler('test_input/bach_minuet_in_g_116.mid')

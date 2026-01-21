@@ -1,3 +1,14 @@
 .env
 __pycache__/
 .DS_Store
+*.pyc
+*.pyo
+*.egg-info/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+experiments/
+venv/
+env/

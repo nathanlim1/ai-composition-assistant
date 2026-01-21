@@ -1,5 +1,5 @@
 from typing import List, Dict
-from MidiHandler import MidiHandler
+from src.MidiHandler import MidiHandler
 
 
 class KnowledgeBase:

@@ -1,6 +1,6 @@
 import argparse
 import sys
-from compositionAgent import compiled_graph, GraphState
+from src.compositionAgent import compiled_graph, GraphState
 from langgraph.errors import GraphRecursionError
 
 
