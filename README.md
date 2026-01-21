@@ -72,7 +72,6 @@ ai-composition-assistant/
    ├── external_generated_output/   # Output from external tools or models
    ├── our_generated_output/        # Output from our system
    ├── test_input/                  # Test MIDI files for input
-   ├── experiments/                 # Experimental outputs and test files
    │
    ├── main.py                      # Main entry point for running the assistant
    ├── README.md                    # Project documentation
